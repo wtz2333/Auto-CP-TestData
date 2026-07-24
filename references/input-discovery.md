@@ -39,3 +39,4 @@ Before editing, report:
 - Which optional artifact classes exist.
 - Whether existing data will enter audit-first mode.
 - Which missing artifacts the workflow will create.
+- Which user-preference fields remain unresolved and therefore require the intake questionnaire.

@@ -4,7 +4,7 @@ Treat readiness as recorded evidence, not as the presence of files. A compilable
 
 ## Canonical state
 
-Choose one machine-readable problem contract as the authoritative source for the interface, limits, judge mode, solution roles, and case plan. If `task.json` and `pipeline.json` are both used, assign every shared field one owner and store the owner's revision or hash in the derived file. Reject disagreement instead of choosing whichever file was read last.
+Choose one machine-readable problem contract as the authoritative source for user authority, statement style, rewrite scope, interface, limits, judge mode, scoring units, solution roles, and case plan. If `task.json` and `pipeline.json` are both used, assign every shared field one owner and store the owner's revision or hash in the derived file. Reject disagreement instead of choosing whichever file was read last.
 
 At each checkpoint record:
 
@@ -22,7 +22,11 @@ After a change, invalidate the changed artifact's gate and every dependent resul
 
 | Changed artifact | Results that must be rerun |
 |---|---|
+| Required preference, delegation, target audience, or delivery scope | Intake gate and every design or delivery result affected by the changed choice |
+| Statement style or narrative-only rewrite scope | Statement draft, style/equivalence review, rendering, and any sample passage changed with it |
 | Mathematical definition, input/output, constraints, subtasks, or judge mode | Statement review, std/brute review, validator, generator plan, samples, all data, solution matrix, timing, editorial, release audit |
+| Scoring mode, unit membership, points, or dependencies | Subtask table, manifest, candidate score calculation, partial-solution claims, editorial, and release audit; rerun data/validator gates too when membership constraints changed |
+| Package format or output path | Packaging, allowlist/archive verification, delivery hashes, and release audit |
 | Samples only | Sample validation, displayed/file consistency, statement review of the affected passage |
 | `std.cpp` or answer semantics | Proof/code review, differential tests, all answers, candidate matrix, timing, editorial code correspondence |
 | `brute.cpp` | Brute audit and every differential/stress result that used it |
@@ -42,12 +46,12 @@ Retry deterministic transient failures. Resume a long generation only from an at
 
 Issue `decision: go` only when all required gates are current and their evidence is available. The final audit must list:
 
-- Contract and source revisions.
+- Completed intake authority, contract, and source revisions.
 - Statement/sample review result.
 - Oracle/brute proof and differential evidence.
 - Validator positive/negative results.
 - Data legality, answer, uniqueness, reproducibility, role coverage, and strength results.
-- Candidate verdict/score matrix and timing evidence.
+- Scoring-unit definition, candidate verdict/score breakdown, and timing evidence.
 - Editorial review result.
 - Unresolved risks, which must be empty for `go`.
 

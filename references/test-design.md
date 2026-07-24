@@ -16,9 +16,11 @@ Give every case a written purpose. Allocate limited slots in this order: boundar
 
 ## Group manifest
 
-Make group membership mutually exclusive: every formal case belongs to exactly one scoring/subtask row. For each group, state its case ids, extra constraints, total points, intended algorithm, generator modes, critical properties, and expected attacked mistakes. Put concrete seeds and parameters in the executable case list.
+Separate validator groups from scoring units. A validator group names the extra legality promise checked for a case. A scoring unit names how points are awarded. They may use similar labels, but neither is inferred from the other.
 
-Require every declared group to contain at least one formal case. Pass the group id to the validator so it checks both global legality and the group's extra promise.
+Make scoring-unit membership mutually exclusive: every formal case belongs to exactly one unit. For each unit, state its case ids, type (`case` or `bundle`), points, dependencies, extra constraints, intended algorithm, generator modes, critical properties, and expected attacked mistakes. Put concrete seeds and parameters in the executable case list.
+
+Require every declared validator group and scoring unit to contain at least one formal case. Pass the validator group id to the validator so it checks both global legality and the group's extra promise. Score a bundle only when every member case and dependency unit passes.
 
 ## Semantic roles
 
@@ -58,4 +60,4 @@ Match the shape to the suspected complexity. Stress the dimension actually squar
 
 ## Reproducibility
 
-Record id, group, points, profile, seed, generator hash, input hash, and answer hash. Reject duplicate formal inputs by hash unless a case explicitly declares a defensible evaluation reason. If a random seed kills a program, keep that seed and explain the responsible feature.
+Record case id, validator group, scoring unit, profile, seed, generator hash, input hash, and answer hash. Record points and dependencies once on the scoring unit rather than copying them onto member cases. Reject duplicate formal inputs by hash unless a case explicitly declares a defensible evaluation reason. If a random seed kills a program, keep that seed and explain the responsible feature.

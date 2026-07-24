@@ -99,6 +99,19 @@ class Pipeline:
         except (OSError, json.JSONDecodeError) as exc:
             raise PipelineError(f"cannot load configuration: {exc}") from exc
 
+        self.task_path: Path | None = None
+        self.task: dict[str, Any] = {}
+        task_reference = self.config.get("task_contract")
+        if isinstance(task_reference, str) and task_reference.strip():
+            self.task_path = self.source_path(task_reference)
+            try:
+                loaded_task = json.loads(self.task_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise PipelineError(f"cannot load task contract: {exc}") from exc
+            if not isinstance(loaded_task, dict):
+                raise PipelineError("task contract must contain a JSON object")
+            self.task = loaded_task
+
         self.build_dir = self.output_path("build_dir", "build")
         self.data_dir = self.output_path("data_dir", "data")
         self.logs_dir = self.output_path("logs_dir", "logs")
@@ -107,6 +120,7 @@ class Pipeline:
         self.report_path = self.output_path("report_path", "report.md")
         self.max_output = int(self.config.get("max_output_bytes", 64 * 1024 * 1024))
         self.time_limit = int(self.config.get("time_limit_ms", 2000))
+        self.memory_limit_mib = int(self.config.get("memory_limit_mib", 0))
         self.oracle_timeout = int(self.config.get("oracle_timeout_ms", self.time_limit))
         self.generator_timeout = int(self.config.get("generator_timeout_ms", 5000))
         self.validator_timeout = int(self.config.get("validator_timeout_ms", 2000))
@@ -116,6 +130,11 @@ class Pipeline:
         self.gate_errors: list[str] = []
         self.environment: dict[str, Any] = {}
         self.timing_summary: dict[str, Any] = {}
+        self.scoring_mode = ""
+        self.total_points = 0.0
+        self.scoring_units: list[dict[str, Any]] = []
+        self.scoring_by_id: dict[str, dict[str, Any]] = {}
+        self.scoring_unit_for_case: dict[str, dict[str, Any]] = {}
         self.validate_config()
 
     def output_path(self, key: str, default: str) -> Path:
@@ -179,14 +198,20 @@ class Pipeline:
             group = case.get("group", "default")
             if not isinstance(group, str) or not group:
                 raise PipelineError(f"case {case_id} group must be nonempty")
-            points = case.get("points", 1)
-            if not isinstance(points, (int, float)) or isinstance(points, bool) or points < 0:
-                raise PipelineError(f"case {case_id} points must be a nonnegative number")
+            if "points" in case:
+                raise PipelineError(
+                    f"case {case_id} must not define legacy points; use scoring.units"
+                )
             if case.get("allow_duplicate") and not str(case.get("duplicate_reason", "")).strip():
                 raise PipelineError(f"case {case_id} allows duplication but has no duplicate_reason")
 
+        self.validate_scoring()
+        self.validate_task_contract()
+
         if self.compare_mode not in {"tokens", "exact"}:
             raise PipelineError("output_compare must be 'tokens' or 'exact'")
+        if self.memory_limit_mib <= 0:
+            raise PipelineError("memory_limit_mib must be a positive integer")
         text_files = self.config.get("text_files", [])
         if not isinstance(text_files, list) or not all(isinstance(value, str) for value in text_files):
             raise PipelineError("text_files must be a list of paths")
@@ -246,6 +271,336 @@ class Pipeline:
             ):
                 raise PipelineError(f"wrong solution {name} needs a rejection expectation")
 
+    def validate_task_contract(self) -> None:
+        if self.task_path is None:
+            raise PipelineError("task_contract is required")
+        intake = self.task.get("intake")
+        if not isinstance(intake, dict) or intake.get("status") != "complete":
+            raise PipelineError("task contract intake.status must be 'complete'")
+        preferences = intake.get("preferences")
+        if not isinstance(preferences, dict):
+            raise PipelineError("task contract intake.preferences must be an object")
+
+        required = {
+            "original_problem_dir",
+            "output_dir",
+            "case_count",
+            "deliverables",
+            "scoring_mode",
+            "scoring_plan",
+            "statement_style",
+            "rewrite_scope",
+            "target_audience",
+            "package_format",
+        }
+        missing = sorted(required - set(preferences))
+        if missing:
+            raise PipelineError(f"task contract has unresolved preferences: {missing}")
+
+        values: dict[str, Any] = {}
+        for field in sorted(required):
+            entry = preferences[field]
+            if not isinstance(entry, dict) or "value" not in entry:
+                raise PipelineError(f"preference {field} must define value and source")
+            source = entry.get("source")
+            if source not in {"user", "delegated"}:
+                raise PipelineError(
+                    f"preference {field} source must be user or delegated, got {source!r}"
+                )
+            if source == "delegated" and not str(entry.get("decision_note", "")).strip():
+                raise PipelineError(f"delegated preference {field} needs decision_note")
+            values[field] = entry["value"]
+
+        for field in ("original_problem_dir", "output_dir"):
+            if preferences[field]["source"] != "user":
+                raise PipelineError(f"preference {field} must be supplied by the user")
+            if not isinstance(values[field], str) or not values[field].strip():
+                raise PipelineError(f"preference {field} must be a nonempty path")
+
+        if preferences["case_count"]["source"] != "user":
+            raise PipelineError("preference case_count must be supplied by the user")
+        if (
+            not isinstance(values["case_count"], int)
+            or isinstance(values["case_count"], bool)
+            or values["case_count"] <= 0
+        ):
+            raise PipelineError("preference case_count must be a positive integer")
+        if values["case_count"] != len(self.cases):
+            raise PipelineError("task contract case_count does not match pipeline cases")
+
+        deliverables = values["deliverables"]
+        if (
+            not isinstance(deliverables, list)
+            or not deliverables
+            or not all(isinstance(value, str) and value.strip() for value in deliverables)
+            or len(set(deliverables)) != len(deliverables)
+        ):
+            raise PipelineError("preference deliverables must be unique nonempty strings")
+
+        if values["scoring_mode"] not in {"per_case", "bundled", "mixed"}:
+            raise PipelineError("preference scoring_mode is invalid")
+        if values["scoring_mode"] != self.scoring_mode:
+            raise PipelineError("task contract scoring_mode does not match pipeline scoring.mode")
+
+        scoring_plan = values["scoring_plan"]
+        if preferences["scoring_plan"]["source"] != "user":
+            raise PipelineError("preference scoring_plan must be confirmed by the user")
+        if not isinstance(scoring_plan, dict):
+            raise PipelineError("preference scoring_plan must be an object")
+        if scoring_plan.get("unit_authority") not in {
+            "user-supplied",
+            "delegated",
+        }:
+            raise PipelineError("scoring_plan unit_authority is invalid")
+        if scoring_plan.get("expectation_mode") not in {"exact", "range"}:
+            raise PipelineError("scoring_plan expectation_mode is invalid")
+
+        style = values["statement_style"]
+        if not isinstance(style, dict) or style.get("mode") not in {
+            "formal",
+            "light-context",
+            "themed",
+        }:
+            raise PipelineError("preference statement_style needs a concrete supported mode")
+        theme = style.get("theme")
+        if style["mode"] == "themed" and (
+            not isinstance(theme, str) or not theme.strip()
+        ):
+            raise PipelineError("themed statement_style requires a nonempty theme")
+        for field in ("required_elements", "forbidden_elements"):
+            elements = style.get(field, [])
+            if not isinstance(elements, list) or not all(
+                isinstance(value, str) and value.strip() for value in elements
+            ):
+                raise PipelineError(f"statement_style {field} must be a list of strings")
+        if style["mode"] == "themed":
+            if not isinstance(style.get("title_preference"), str) or not style[
+                "title_preference"
+            ].strip():
+                raise PipelineError("themed statement_style requires title_preference")
+            if not isinstance(style.get("allow_generic_names"), bool):
+                raise PipelineError("themed statement_style requires allow_generic_names")
+            if style.get("theme_term_scope") not in {"intro-only", "throughout"}:
+                raise PipelineError("themed statement_style has invalid theme_term_scope")
+
+        if values["rewrite_scope"] not in {
+            "narrative-only",
+            "constraints-and-subtasks",
+            "equivalent-interface",
+        }:
+            raise PipelineError("preference rewrite_scope is invalid")
+        for field in ("target_audience", "package_format"):
+            if not isinstance(values[field], str) or not values[field].strip():
+                raise PipelineError(f"preference {field} must be nonempty")
+
+        technical = self.task.get("technical_facts")
+        required_technical = {
+            "language_standard",
+            "time_limit_ms",
+            "memory_limit_mib",
+            "judge_mode",
+        }
+        if not isinstance(technical, dict):
+            raise PipelineError("task contract technical_facts must be an object")
+        missing_technical = sorted(required_technical - set(technical))
+        if missing_technical:
+            raise PipelineError(
+                f"task contract has unresolved technical facts: {missing_technical}"
+            )
+        technical_values: dict[str, Any] = {}
+        for field in sorted(required_technical):
+            entry = technical[field]
+            if not isinstance(entry, dict) or "value" not in entry:
+                raise PipelineError(f"technical fact {field} must define value and source")
+            source = entry.get("source")
+            if source not in {"user", "delegated", "discovered", "derived"}:
+                raise PipelineError(f"technical fact {field} has unresolved source")
+            if source in {"discovered", "derived"} and not str(
+                entry.get("evidence", "")
+            ).strip():
+                raise PipelineError(f"technical fact {field} needs evidence")
+            if source == "delegated" and not str(entry.get("decision_note", "")).strip():
+                raise PipelineError(f"delegated technical fact {field} needs decision_note")
+            technical_values[field] = entry["value"]
+
+        for field in ("time_limit_ms", "memory_limit_mib"):
+            value = technical_values[field]
+            if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                raise PipelineError(f"technical fact {field} must be a positive integer")
+        if technical_values["time_limit_ms"] != self.time_limit:
+            raise PipelineError("task time_limit_ms does not match pipeline time_limit_ms")
+        if technical_values["memory_limit_mib"] != self.memory_limit_mib:
+            raise PipelineError(
+                "task memory_limit_mib does not match pipeline memory_limit_mib"
+            )
+
+        language_standard = technical_values["language_standard"]
+        if not isinstance(language_standard, str) or not language_standard.strip():
+            raise PipelineError("technical fact language_standard must be nonempty")
+        normalized_standard = language_standard.lower().replace(" ", "")
+        flags = [str(flag).lower().replace(" ", "") for flag in self.config.get("cxxflags", [])]
+        if not any(normalized_standard in flag for flag in flags):
+            raise PipelineError("task language_standard does not match pipeline cxxflags")
+
+        judge_mode = technical_values["judge_mode"]
+        if not isinstance(judge_mode, str) or not judge_mode.strip():
+            raise PipelineError("technical fact judge_mode must be nonempty")
+        normalized_judge = judge_mode.lower()
+        if "tokens" in normalized_judge and self.compare_mode != "tokens":
+            raise PipelineError("task judge_mode tokens conflicts with output_compare")
+        if "exact" in normalized_judge and self.compare_mode != "exact":
+            raise PipelineError("task judge_mode exact conflicts with output_compare")
+
+    def validate_scoring(self) -> None:
+        scoring = self.config.get("scoring")
+        if not isinstance(scoring, dict):
+            raise PipelineError("scoring must be an object")
+        mode = scoring.get("mode")
+        if mode not in {"per_case", "bundled", "mixed"}:
+            raise PipelineError("scoring.mode must be per_case, bundled, or mixed")
+        total = scoring.get("total_points")
+        if (
+            not isinstance(total, (int, float))
+            or isinstance(total, bool)
+            or not math.isfinite(float(total))
+            or float(total) <= 0
+        ):
+            raise PipelineError("scoring.total_points must be a positive finite number")
+        units = scoring.get("units")
+        if not isinstance(units, list) or not units:
+            raise PipelineError("scoring.units must be a nonempty list")
+
+        case_set = set(self.case_ids)
+        by_id: dict[str, dict[str, Any]] = {}
+        case_owner: dict[str, dict[str, Any]] = {}
+        has_case_unit = False
+        has_multi_bundle = False
+        point_sum = 0.0
+        for index, raw_unit in enumerate(units, 1):
+            if not isinstance(raw_unit, dict):
+                raise PipelineError(f"scoring unit {index} must be an object")
+            unit_id = str(raw_unit.get("id", ""))
+            if not re.fullmatch(r"[A-Za-z0-9_.-]+", unit_id):
+                raise PipelineError(f"unsafe or empty scoring unit id: {unit_id!r}")
+            if unit_id in by_id:
+                raise PipelineError(f"duplicate scoring unit id: {unit_id}")
+            unit_type = raw_unit.get("type")
+            if unit_type not in {"case", "bundle"}:
+                raise PipelineError(f"scoring unit {unit_id} has invalid type")
+            members = raw_unit.get("cases")
+            if (
+                not isinstance(members, list)
+                or not members
+                or not all(isinstance(value, str) for value in members)
+                or len(set(members)) != len(members)
+            ):
+                raise PipelineError(
+                    f"scoring unit {unit_id} cases must be unique nonempty case ids"
+                )
+            unknown = set(members) - case_set
+            if unknown:
+                raise PipelineError(
+                    f"scoring unit {unit_id} references unknown cases {sorted(unknown)}"
+                )
+            if unit_type == "case" and len(members) != 1:
+                raise PipelineError(f"case scoring unit {unit_id} must contain exactly one case")
+            points = raw_unit.get("points")
+            if (
+                not isinstance(points, (int, float))
+                or isinstance(points, bool)
+                or not math.isfinite(float(points))
+                or float(points) < 0
+            ):
+                raise PipelineError(
+                    f"scoring unit {unit_id} points must be a nonnegative finite number"
+                )
+            dependencies = raw_unit.get("depends_on", [])
+            if (
+                not isinstance(dependencies, list)
+                or not all(isinstance(value, str) and value for value in dependencies)
+                or len(set(dependencies)) != len(dependencies)
+            ):
+                raise PipelineError(
+                    f"scoring unit {unit_id} depends_on must contain unique unit ids"
+                )
+            normalized = {
+                **raw_unit,
+                "id": unit_id,
+                "type": unit_type,
+                "cases": list(members),
+                "points": float(points),
+                "depends_on": list(dependencies),
+            }
+            by_id[unit_id] = normalized
+            point_sum += float(points)
+            has_case_unit = has_case_unit or unit_type == "case"
+            has_multi_bundle = has_multi_bundle or (
+                unit_type == "bundle" and len(members) > 1
+            )
+            for case_id in members:
+                if case_id in case_owner:
+                    raise PipelineError(
+                        f"case {case_id} belongs to both {case_owner[case_id]['id']} and {unit_id}"
+                    )
+                case_owner[case_id] = normalized
+
+        uncovered = sorted(case_set - set(case_owner))
+        if uncovered:
+            raise PipelineError(f"cases missing from scoring units: {uncovered}")
+        if not math.isclose(point_sum, float(total), rel_tol=0.0, abs_tol=1e-9):
+            raise PipelineError(
+                f"scoring unit points total {point_sum:g}, expected {float(total):g}"
+            )
+
+        for unit_id, unit in by_id.items():
+            unknown = set(unit["depends_on"]) - set(by_id)
+            if unknown:
+                raise PipelineError(
+                    f"scoring unit {unit_id} depends on unknown units {sorted(unknown)}"
+                )
+            if unit_id in unit["depends_on"]:
+                raise PipelineError(f"scoring unit {unit_id} depends on itself")
+
+        state: dict[str, int] = {}
+
+        def visit(unit_id: str, trail: list[str]) -> None:
+            marker = state.get(unit_id, 0)
+            if marker == 1:
+                raise PipelineError(
+                    "scoring dependency cycle: " + " -> ".join([*trail, unit_id])
+                )
+            if marker == 2:
+                return
+            state[unit_id] = 1
+            for dependency in by_id[unit_id]["depends_on"]:
+                visit(dependency, [*trail, unit_id])
+            state[unit_id] = 2
+
+        for unit_id in by_id:
+            visit(unit_id, [])
+
+        if mode == "per_case" and any(
+            unit["type"] != "case" for unit in by_id.values()
+        ):
+            raise PipelineError("per_case scoring requires only single-case units")
+        if mode == "bundled" and (
+            any(unit["type"] != "bundle" for unit in by_id.values())
+            or not has_multi_bundle
+        ):
+            raise PipelineError(
+                "bundled scoring requires bundle units and at least one multi-case bundle"
+            )
+        if mode == "mixed" and not (has_case_unit and has_multi_bundle):
+            raise PipelineError(
+                "mixed scoring requires a case unit and a multi-case bundle"
+            )
+
+        self.scoring_mode = str(mode)
+        self.total_points = float(total)
+        self.scoring_units = list(by_id.values())
+        self.scoring_by_id = by_id
+        self.scoring_unit_for_case = case_owner
+
     def validate_expectation(self, name: str, expect: Any) -> None:
         if not isinstance(expect, dict):
             raise PipelineError(f"solution {name} expect must be an object")
@@ -267,6 +622,10 @@ class Pipeline:
                 not isinstance(expect[key], (int, float)) or isinstance(expect[key], bool)
             ):
                 raise PipelineError(f"solution {name} {key} must be numeric")
+            if key in expect and not 0 <= float(expect[key]) <= self.total_points:
+                raise PipelineError(
+                    f"solution {name} {key} must stay within 0 and {self.total_points:g}"
+                )
         if expect.get("score_min", float("-inf")) > expect.get("score_max", float("inf")):
             raise PipelineError(f"solution {name} score_min exceeds score_max")
 
@@ -280,6 +639,41 @@ class Pipeline:
         if unknown:
             raise PipelineError(f"{label}: unknown cases {sorted(unknown)}")
         return values
+
+    def score_row(
+        self, row: dict[str, dict[str, Any]]
+    ) -> tuple[float, dict[str, dict[str, Any]]]:
+        earned: dict[str, bool] = {}
+        breakdown: dict[str, dict[str, Any]] = {}
+
+        def unit_earned(unit_id: str) -> bool:
+            if unit_id in earned:
+                return earned[unit_id]
+            unit = self.scoring_by_id[unit_id]
+            cases_passed = all(row[case_id]["verdict"] == "AC" for case_id in unit["cases"])
+            dependencies_passed = all(
+                unit_earned(dependency) for dependency in unit["depends_on"]
+            )
+            awarded = cases_passed and dependencies_passed
+            earned[unit_id] = awarded
+            breakdown[unit_id] = {
+                "type": unit["type"],
+                "cases": list(unit["cases"]),
+                "depends_on": list(unit["depends_on"]),
+                "points": unit["points"],
+                "cases_passed": cases_passed,
+                "dependencies_passed": dependencies_passed,
+                "awarded": awarded,
+            }
+            return awarded
+
+        for unit in self.scoring_units:
+            unit_earned(unit["id"])
+        score = sum(
+            unit["points"] for unit in self.scoring_units if earned[unit["id"]]
+        )
+        ordered = {unit["id"]: breakdown[unit["id"]] for unit in self.scoring_units}
+        return score, ordered
 
     def executable_path(self, key: str) -> Path:
         suffix = ".exe" if os.name == "nt" else ""
@@ -309,6 +703,8 @@ class Pipeline:
             return
         sources = self.config["sources"]
         paths = [self.config_path]
+        if self.task_path is not None:
+            paths.append(self.task_path)
         paths.extend(self.source_path(str(sources[key])) for key in ("generator", "validator", "oracle"))
         paths.extend(
             self.source_path(str(solution["source"]))
@@ -358,13 +754,15 @@ class Pipeline:
         template = self.config.get(config_key, default)
         if not isinstance(template, list):
             raise PipelineError(f"{config_key} must be a list")
+        scoring_unit = self.scoring_unit_for_case[str(case["id"])]
         fields = {
             "case_id": str(case["id"]),
             "case_index": str(index),
             "seed": str(case["seed"]),
             "profile": str(case["profile"]),
             "group": str(case.get("group", "default")),
-            "points": str(case.get("points", 1)),
+            "points": str(scoring_unit["points"]),
+            "scoring_unit": str(scoring_unit["id"]),
         }
         try:
             return [str(part).format(**fields) for part in template]
@@ -521,12 +919,16 @@ class Pipeline:
             ),
             "case_count": len(manifest_cases),
             "config_sha256": sha256_file(self.config_path),
+            "task_contract_sha256": (
+                sha256_file(self.task_path) if self.task_path is not None else None
+            ),
             "source_sha256": {
                 key: sha256_file(self.source_path(str(sources[key])))
                 for key in ("generator", "validator", "oracle")
             },
             "environment": self.environment,
             "timing": self.timing_summary,
+            "scoring": self.config["scoring"],
             "cases": manifest_cases,
             "gate_errors": list(self.gate_errors),
         }
@@ -541,7 +943,7 @@ class Pipeline:
     def evaluate(self) -> dict[str, Any]:
         matrix: dict[str, dict[str, dict[str, Any]]] = {}
         scores: dict[str, float] = {}
-        total_points = sum(float(case.get("points", 1)) for case in self.cases)
+        score_breakdowns: dict[str, dict[str, dict[str, Any]]] = {}
         expectation_errors: list[str] = []
         for solution in self.config.get("solutions", []):
             name = str(solution["name"])
@@ -565,12 +967,9 @@ class Pipeline:
                     atomic_write(self.logs_dir / f"run-{name}-{case_id}.log", result.stderr)
                     row[case_id] = {"verdict": verdict, "time_ms": result.elapsed_ms}
             matrix[name] = row
-            score = sum(
-                float(case.get("points", 1))
-                for case in self.cases
-                if row[str(case["id"])]["verdict"] == "AC"
-            )
+            score, breakdown = self.score_row(row)
             scores[name] = score
+            score_breakdowns[name] = breakdown
             expectation_errors.extend(
                 self.check_expectations(name, row, score, solution.get("expect", {}))
             )
@@ -597,13 +996,15 @@ class Pipeline:
                 else ["run independent acceptance and editorial review"]
             ),
             "case_ids": self.case_ids,
-            "total_points": total_points,
+            "scoring": self.config["scoring"],
+            "total_points": self.total_points,
             "solution_catalog": [
                 {field: solution[field] for field in catalog_fields if field in solution}
                 for solution in self.config.get("solutions", [])
             ],
             "solutions": matrix,
             "scores": scores,
+            "score_breakdowns": score_breakdowns,
             "expectation_errors": expectation_errors,
             "gate_errors": list(self.gate_errors),
         }
@@ -631,7 +1032,6 @@ class Pipeline:
         return errors
 
     def write_report(self, verdicts: dict[str, Any] | None, completed_gate: str) -> None:
-        total_points = sum(float(case.get("points", 1)) for case in self.cases)
         decision = "no_go" if self.gate_errors else "go"
         lines = [
             "# Test data pipeline report",
@@ -639,8 +1039,10 @@ class Pipeline:
             f"- Decision: **{decision}**",
             f"- Completed gate: `{completed_gate}`",
             f"- Cases: {len(self.cases)}",
-            f"- Total points: {total_points:g}",
+            f"- Scoring mode: `{self.scoring_mode}`",
+            f"- Total points: {self.total_points:g}",
             f"- Compare mode: `{self.compare_mode}`",
+            f"- Memory limit: {self.memory_limit_mib} MiB",
         ]
         if self.environment:
             lines.extend(
@@ -675,6 +1077,24 @@ class Pipeline:
                     "",
                     "- Continue to the next acceptance gate; this checkpoint alone is not a release approval.",
                 ]
+            )
+
+        lines.extend(["", "## Scoring units", ""])
+        lines.append("| Unit | Type | Cases | Points | Dependencies |")
+        lines.append("|---|---|---|---:|---|")
+        for unit in self.scoring_units:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        str(unit["id"]).replace("|", "\\|"),
+                        str(unit["type"]),
+                        ", ".join(unit["cases"]),
+                        f"{unit['points']:g}",
+                        ", ".join(unit["depends_on"]),
+                    ]
+                )
+                + " |"
             )
 
         if verdicts and verdicts.get("solution_catalog"):

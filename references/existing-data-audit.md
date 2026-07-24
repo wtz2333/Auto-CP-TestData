@@ -12,7 +12,7 @@ Run the validator with the declared subtask or group for every input. Check comp
 
 ## Coverage and strength checks
 
-Map each existing case to the manifest row it is meant to serve. Verify exact case count, nonempty group coverage, mutually exclusive scoring assignment, input uniqueness, required boundaries, special structures, maximum-scale cases, and adversarial coverage. Run the partial and wrong solution suite on the complete data and compare observed verdicts and scores with the intended matrix.
+Map each existing case to its validator group and scoring unit. Verify exact case count, nonempty group/unit coverage, mutually exclusive scoring assignment, valid dependencies and point totals, input uniqueness, required boundaries, special structures, maximum-scale cases, and adversarial coverage. Run the partial and wrong solution suite on the complete data and compare observed verdicts and scores with the intended matrix under the frozen independent, bundled, or mixed rule.
 
 Assign semantic-role tags and a written purpose even when the supplied package lacks a manifest. Distinguish easy maximum-boundary cases from shapes that actually realize a weaker algorithm's worst-case complexity; one does not substitute for the other.
 

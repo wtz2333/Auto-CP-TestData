@@ -12,12 +12,12 @@
 
 Keep one primary oracle source. Do not maintain divergent copies of `std.cpp`; when a delivery layout requires a copied solution, verify that its hash matches the workspace source. Preserve:
 
-- The frozen statement/contract revision.
+- The completed intake authority and frozen statement/contract revision.
 - The source baseline, rewrite record, statement-risk classification, raw statement reviews, and sample hashes.
 - Brute-force exhaustive range, random count, fixed seeds, directed families, and stopping reason.
 - Generator modes and seeds, validator group arguments, input/answer hashes, and duplicate decisions.
 - Validator positive/negative corpus and every expected/observed classification.
-- Candidate verdict matrix, actual scores, and timing runs.
+- Scoring-unit definition, candidate verdict matrix, per-unit score breakdown, and timing runs.
 - Raw reviewer reports, disposition records, fixes, and recheck evidence.
 
 Separate build workspace, final deliverables, and internal reports when the surrounding project defines such directories. Never leak formal data, editorials, source mappings, or internal reports into a contestant download package.
@@ -30,7 +30,7 @@ Cross-check the primary std, both independent stds, any original reference imple
 
 ## Subtask scoring audit
 
-Use a reviewer who did not design the data-strength expectations. Implement one representative solution for every distinct partial algorithm or complexity class; one program may cover several group rows using the same method. Run each on the complete formal set and compare its actual score and timeout pattern with the manifest.
+Use a reviewer who did not design the data-strength expectations. Implement one representative solution for every distinct partial algorithm or complexity class; one program may cover several scoring units using the same method. Run each on the complete formal set and compare its actual score and timeout pattern with the manifest. Recalculate with the frozen `per_case`, `bundled`, or `mixed` rule; a bundle earns no points unless all member cases and dependency units pass.
 
 If a weaker algorithm earns too much, decide whether the statement's score explanation is wrong or the data is weak. Update the explanation or strengthen/regenerate data, then rerun the full regression.
 

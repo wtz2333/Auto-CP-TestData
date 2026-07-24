@@ -1,0 +1,93 @@
+{
+  "intake": {
+    "status": "complete",
+    "preferences": {
+      "original_problem_dir": {
+        "value": "original-problem",
+        "source": "user"
+      },
+      "output_dir": {
+        "value": "workspace",
+        "source": "user"
+      },
+      "case_count": {
+        "value": 3,
+        "source": "user"
+      },
+      "deliverables": {
+        "value": [
+          "statement",
+          "data",
+          "programs",
+          "editorial",
+          "reports"
+        ],
+        "source": "user"
+      },
+      "scoring_mode": {
+        "value": "mixed",
+        "source": "user"
+      },
+      "scoring_plan": {
+        "value": {
+          "unit_authority": "delegated",
+          "expectation_mode": "range"
+        },
+        "source": "user"
+      },
+      "statement_style": {
+        "value": {
+          "mode": "light-context",
+          "theme": null,
+          "required_elements": [],
+          "forbidden_elements": []
+        },
+        "source": "delegated",
+        "decision_note": "A short neutral setup fits the formal graph problem."
+      },
+      "rewrite_scope": {
+        "value": "constraints-and-subtasks",
+        "source": "user"
+      },
+      "target_audience": {
+        "value": "NOIP improvement-level training",
+        "source": "user"
+      },
+      "package_format": {
+        "value": "luogu-markdown",
+        "source": "user"
+      }
+    },
+    "clarification_log": [
+      {
+        "question": "Use independent, bundled, or mixed scoring?",
+        "answer": "Mixed scoring.",
+        "resolved_fields": [
+          "scoring_mode"
+        ]
+      }
+    ]
+  },
+  "technical_facts": {
+    "language_standard": {
+      "value": "C++14",
+      "source": "discovered",
+      "evidence": "original statement and std.cpp"
+    },
+    "time_limit_ms": {
+      "value": 2000,
+      "source": "discovered",
+      "evidence": "original statement"
+    },
+    "memory_limit_mib": {
+      "value": 512,
+      "source": "derived",
+      "evidence": "project policy"
+    },
+    "judge_mode": {
+      "value": "batch-tokens",
+      "source": "discovered",
+      "evidence": "statement and reference program"
+    }
+  }
+}

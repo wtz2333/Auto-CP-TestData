@@ -29,6 +29,8 @@ Cover every subtask-table row. If several rows use the same algorithm, explain t
 
 Ensure these claims match the tested partial programs and measured score matrix. Do not describe an intended score that the formal data does not enforce.
 
+Use the same scoring units as the statement, manifest, pipeline, and verdict report. For bundled scoring, say that the unit's points require every member case and dependency unit; do not present a partially passed bundle as earned credit. For mixed scoring, distinguish independently awarded points from all-or-nothing bundles.
+
 ## Human-readable style
 
 Write as an experienced contestant explaining the solution to another contestant. Prefer short declarative sentences and concrete logical transitions. Introduce notation only when it reduces repetition. Explain why an observation matters before giving a formula or code detail.

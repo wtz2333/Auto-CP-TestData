@@ -24,7 +24,15 @@ Keep original titles, URLs, paths, and modification history out of the contestan
 
 Choose a new Chinese display title. Under the supplied NOIP convention, choose an English name containing one lowercase ASCII word and keep it unique within the contest day.
 
-Remove or fully replace the original background. Prefer a short neutral context or direct formal wording. Change names, exposition, field order, or equivalent representation only when clarity improves. Preserve the state space, feasibility conditions, objective, answer semantics, and indispensable full-score algorithm. Record every material change internally.
+Use the concrete statement style frozen in the task contract:
+
+- `formal`: omit narrative and state the mathematical task directly.
+- `light-context`: use a short neutral setup, then move promptly to formal wording.
+- `themed`: apply the user-approved setting and terminology consistently. Do not add unapproved people, franchises, lore, or jokes.
+
+If the user selected “adaptive”, resolve it to one of these concrete modes under `source: delegated` before drafting. For a themed statement, freeze the theme, required and forbidden elements, title preference, generic-name policy, and whether theme terms may replace mathematical object names.
+
+Remove or fully replace the original background. Change names, exposition, field order, or equivalent representation only within the frozen rewrite scope and when clarity improves. Preserve the state space, feasibility conditions, objective, answer semantics, and indispensable full-score algorithm. Record every material change internally.
 
 ## Interface and boundaries
 
@@ -35,6 +43,8 @@ If contestant file I/O is required, state `<english-name>.in` and `<english-name
 ## Constraints and subtasks
 
 Make each subtask row map to a nonempty, mutually exclusive set of formal points. List point ids, extra constraints, score, and expected method. Assign every point exactly once and make row scores total the full score.
+
+Follow the frozen scoring mode. For bundled rows, state that all member cases must pass and list any dependencies. For mixed scoring, distinguish independent case rows from all-or-nothing bundles. Keep this table identical to the executable scoring units.
 
 Under the supplied NOIP convention, use exactly 20 equal five-point cases or 25 equal four-point cases. Require at least five rows for T1/T2 and ten for T3/T4. Make T1 fully solvable by basic algorithms or simple ad-hoc reasoning. Give T2/T3/T4 at least 30 basic-algorithm or brute-force points; with 25 cases use at least eight points, totaling 32. Treat these counts as project policy, not universal rules.
 

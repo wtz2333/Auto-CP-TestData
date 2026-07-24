@@ -1,6 +1,6 @@
 ---
 name: build-cp-testdata
-description: Rewrite and freeze algorithm-contest statements, audit or build adversarial test data, and write concise human-readable editorials covering every partial solution. Use when Codex must preserve a problem's mathematics while replacing its title, wording, samples, constraints, or subtasks; inspect supplied data before deciding whether to regenerate it; or create std.cpp, brute.cpp, validators, generators, scored .in/.ans files, buggy solutions, timing evidence, independent checks, and formal solution documents compliant with a specified OI or Luogu format.
+description: Clarify required problem-package preferences, rewrite and freeze algorithm-contest statements, audit or build adversarial test data, evaluate independent/bundled/mixed scoring, and write concise human-readable editorials covering every partial solution. Use when Codex must preserve a problem's mathematics while replacing its title, wording, samples, constraints, or subtasks; inspect supplied data before deciding whether to regenerate it; or create std.cpp, brute.cpp, validators, generators, scored .in/.ans files, buggy solutions, timing evidence, independent checks, and formal solution documents compliant with a specified OI or Luogu format.
 ---
 
 # Build Competitive Programming Statements and Test Data
@@ -9,7 +9,9 @@ Create a mathematically faithful rewritten statement and a problem-specific data
 
 ## Required contract
 
-Accept an original-problem directory plus the requested number `N` of independent pairs. Recursively inventory the directory according to [references/input-discovery.md](references/input-discovery.md). Require a Markdown statement and one standard solution; detect rather than assume the presence of an editorial, data, wrong solutions, partial solutions, or a subtask table. Treat ambiguity in critical semantics as blocking, but continue by creating optional artifacts that are simply absent.
+Before mutating work, complete [references/intake-and-clarification.md](references/intake-and-clarification.md) and adapt [assets/task.example.json](assets/task.example.json). Require the user to supply the original-problem path, output path, and exact number `N` of independent pairs. Explicitly resolve deliverables, scoring mode and design authority, statement style, rewrite scope, target audience, and package format; accept “you decide” as recorded delegation, never as a silent default.
+
+Inventory the supplied directory read-only according to [references/input-discovery.md](references/input-discovery.md) before asking about discoverable technical facts. Require a Markdown statement and one standard solution; detect rather than assume the presence of an editorial, data, wrong solutions, partial solutions, or a subtask table. Treat ambiguity in critical semantics as blocking, but continue by creating optional artifacts that are simply absent.
 
 The source statement may be Chinese, English, or bilingual. Always deliver a complete Chinese statement. Never override a stated language standard; otherwise record the chosen default.
 
@@ -17,13 +19,14 @@ Use `valid.cpp` by default. Honor `src/val.cpp` or another project-required name
 
 ## Acceptance gates
 
-Enforce five gates:
+Enforce six gates:
 
-1. Recover a reliable source baseline and internal change record before rewriting.
-2. Freeze the rewritten mathematical definition, interface, constraints, subtasks, samples, and judge mode before formal data generation.
-3. Freeze the primary `std.cpp` only after proof review, brute-force comparison, and boundary checks.
-4. Accept data only after validation, duplicate/LF checks, answer cross-checking, subtask-score tests, timing calibration, and review records pass.
-5. Freeze the editorial only after it covers every declared partial algorithm, the full proof, complexity, boundaries, and implementation correspondence without contradicting accepted artifacts.
+1. Complete the intake contract before any mutating step; no required preference or technical fact may remain unresolved.
+2. Recover a reliable source baseline and internal change record before rewriting.
+3. Freeze the rewritten mathematical definition, interface, constraints, scoring, samples, and judge mode before formal data generation.
+4. Freeze the primary `std.cpp` only after proof review, brute-force comparison, and boundary checks.
+5. Accept data only after validation, duplicate/LF checks, answer cross-checking, scoring-unit tests, timing calibration, and review records pass.
+6. Freeze the editorial only after it covers every declared partial algorithm, the full proof, complexity, boundaries, and implementation correspondence without contradicting accepted artifacts.
 
 Do not finalize an editorial or downstream package while a data-acceptance issue remains open.
 
@@ -31,15 +34,23 @@ Do not finalize an editorial or downstream package while a data-acceptance issue
 
 Follow every gate in order. Never generate final answers before the oracle gate passes.
 
+### 0. Complete intake and clarification
+
+Read the directory without modifying it, inventory recoverable facts, and then ask one compact questionnaire for every unresolved user-preference field. Ask a conditional second round only for details such as a selected theme or custom package format. Do not infer a scoring mode or statement style from the original problem.
+
+Store concrete values and provenance in `task.json`. Require `source: user` for the original path, output path, and `N`; permit `source: delegated` for other preferences only with a decision note. Resolve delegated “adaptive” choices to concrete stored values. Stop before mutation while any required field is absent, contradictory, or marked unresolved.
+
 ### 1. Normalize the contract
 
-Inventory the supplied directory first and record selected/missing artifacts. Read every plausible statement and std candidate, plus all optional artifacts that can constrain later decisions. Create one canonical machine-readable contract for input grammar, ranges, cross-field constraints, subtasks, limits, judge mode, solution roles, case plan, and `N`. Read [references/problem-contract.md](references/problem-contract.md) and [references/state-and-release-audit.md](references/state-and-release-audit.md). Resolve contradictions explicitly; do not infer readiness from file presence.
+Record selected/missing artifacts. Read every plausible statement and std candidate, plus all optional artifacts that can constrain later decisions. Create one canonical machine-readable contract for user preferences, input grammar, ranges, cross-field constraints, scoring units, limits, judge mode, solution roles, case plan, and `N`. Read [references/problem-contract.md](references/problem-contract.md) and [references/state-and-release-audit.md](references/state-and-release-audit.md). Resolve contradictions explicitly; do not infer readiness from file presence.
 
 ### 2. Rewrite and freeze the statement
 
 Read [references/statement-rewrite.md](references/statement-rewrite.md) and [references/luogu-text-format.md](references/luogu-text-format.md), then adapt [assets/statement-template.md](assets/statement-template.md). Recover the complete original mathematical problem first; if its definition, interface, or constraints remain unreliable, mark it unusable instead of inventing semantics.
 
 Replace the displayed title, background, variable names, and exposition while preserving the mathematical problem and indispensable full-score algorithm. Record every material change internally. Design entirely new sample instances and a mutually exclusive subtask table tied to planned formal cases. Make ambiguity-sensitive boundaries explicit in prose or samples.
+
+Apply the frozen `formal`, `light-context`, or `themed` style. Stay within the authorized rewrite scope. For a themed statement, use only approved theme elements and keep the mathematical definition independently readable.
 
 Use one independent source-comparison review for title/background/narrative-only changes. Use two blind reviewers for input representation/order, constraints, output, or wording that could alter mathematical understanding. Freeze only after reviewers recover the same definition and accepted comments are rechecked.
 
@@ -65,7 +76,9 @@ Freeze `std.cpp` only after passing. If brute force is infeasible, require an in
 
 If input/answer files are supplied, read [references/existing-data-audit.md](references/existing-data-audit.md) and inspect them before generating anything. Validate file count, names, LF, syntax, global and group constraints, uniqueness, answer correctness, subtask coverage, boundary/maximum coverage, candidate-solution strength, and timing. If all requirements pass, adopt the existing files by hash and do not regenerate them. If only some fail, preserve passing files and replace only affected points unless the data design is fundamentally inconsistent.
 
-When data is missing or rejected, assign every case an id, seed, generation profile, subtask group, score, semantic-role tags, written purpose, structural features, and intended kills. Maintain a group-level manifest mapping mutually exclusive case ids to constraints, strategy, critical properties, and expected attacked mistakes. Read [references/test-design.md](references/test-design.md). Cover deterministic boundaries before random cases, and distinguish correctness extremes from complexity worst cases. With fixed `N`, replace weak slots instead of adding cases.
+When data is missing or rejected, assign every case an id, seed, generation profile, validator group, scoring unit, semantic-role tags, written purpose, structural features, and intended kills. Maintain a manifest mapping case ids and scoring units to constraints, strategy, critical properties, and expected attacked mistakes. Read [references/test-design.md](references/test-design.md). Cover deterministic boundaries before random cases, and distinguish correctness extremes from complexity worst cases. With fixed `N`, replace weak slots instead of adding cases.
+
+Freeze one explicit scoring definition: `per_case`, `bundled`, or `mixed`. Put every case in exactly one scoring unit, make unit points sum to the total, and keep dependencies acyclic. Treat validator groups and scoring units as separate concepts. Award a bundle only when all member cases and dependency units pass.
 
 ### 5. Implement and attack valid.cpp
 
@@ -79,7 +92,7 @@ Accept `--case`, `--seed`, and `--profile`, and emit one complete file on stdout
 
 ### 7. Generate, validate, and answer
 
-Create `pipeline.json` from [assets/pipeline.example.json](assets/pipeline.example.json), then run:
+Create `task.json` from [assets/task.example.json](assets/task.example.json) and `pipeline.json` from [assets/pipeline.example.json](assets/pipeline.example.json), then run:
 
 ```text
 python scripts/run_pipeline.py pipeline.json all
@@ -93,6 +106,8 @@ For adopted existing data, skip the generation command. Preserve the original `.
 
 Create accepted, subtask, and proven-wrong solutions. Implement at least one representative program for every distinct partial-score algorithm or complexity class. Read [references/solution-suite.md](references/solution-suite.md). Classify wrong solutions by conceptual, complexity, or implementation defect; give every candidate verdict and score expectations plus a named killing profile. Do not call an unexpected algorithm wrong without a defect proof or counterexample.
 
+Express expected score ranges under the frozen scoring units. Do not estimate a bundled subtask by summing the member cases that happened to pass.
+
 ### 9. Evaluate and close the loop
 
 Run every candidate on every pair and produce AC/WA/TLE/RE/CE verdicts. For an unexpected survivor:
@@ -104,6 +119,8 @@ Run every candidate on every pair and produce AC/WA/TLE/RE/CE verdicts. For an u
 5. Regenerate inputs and answers, revalidate all cases, and rerun the full matrix.
 
 Repeat until all gates pass. Random retries without a stated hypothesis do not count as strengthening.
+
+Retain a per-unit score breakdown for every candidate. For a dependency failure, distinguish “member cases passed” from “points awarded” so the report explains why a bundle received zero.
 
 After every repair, apply the invalidation matrix in [references/state-and-release-audit.md](references/state-and-release-audit.md) and rerun all dependent evidence. Preserve failure logs and resume only from checkpoints whose source and configuration hashes still match.
 
@@ -119,10 +136,10 @@ Before release, write the structured `go`/`no_go` report required by [references
 
 Proceed only after data acceptance. Read [references/solution-writing.md](references/solution-writing.md) and [references/luogu-text-format.md](references/luogu-text-format.md), then adapt [assets/solution-template.md](assets/solution-template.md). Begin with a short intuitive explanation, then cover brute force and every distinct partial-score method before the full solution. For each method, state applicable cases, algorithm, correctness, time/space complexity, boundaries, and implementation correspondence.
 
-Write for a human reader: connect observations concretely, avoid canned introductions and repeated summaries, keep paragraphs focused, define notation before use, and retain only formalism that proves or implements something. Check every claim against the frozen statement, manifest, measured scores, and primary std.
+Write for a human reader: connect observations concretely, avoid canned introductions and repeated summaries, keep paragraphs focused, define notation before use, and retain only formalism that proves or implements something. Check every claim against the frozen statement, scoring units, manifest, measured scores, and primary std.
 
 ## Exit criteria
 
-Finish only when the inventory is resolved; the final statement is fully Chinese and passes format/equivalence review; every sample is legal and answer-checked; accepted existing data or generated data satisfies the same gates; exactly `N` formal pairs exist; correct and partial solutions receive intended scores; maximum cases apply measured pressure; and the final audit says `go` with no blocking issue. Reject TODO markers, placeholders, empty implementations, stale evidence, or missing references. When an editorial is requested, require coverage of every distinct partial method, full correctness and complexity analysis, code correspondence, and a human-readability review.
+Finish only when the intake contract is complete; the inventory is resolved; the final statement is fully Chinese and follows the frozen style and rewrite scope; every sample is legal and answer-checked; accepted existing data or generated data satisfies the same gates; exactly `N` formal pairs exist; scoring units are valid; correct and partial solutions receive intended bundled or independent scores; maximum cases apply measured pressure; and the final audit says `go` with no blocking issue. Reject TODO markers, placeholders, empty implementations, stale evidence, or missing references. When an editorial is requested, require coverage of every distinct partial method, full correctness and complexity analysis, code correspondence, and a human-readability review.
 
 Preserve unrelated files and do not delete unconfigured data. Adapt the runner before using it for interactive, output-only, multiple-answer, floating-tolerance, or custom-checker problems.

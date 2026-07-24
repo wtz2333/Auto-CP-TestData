@@ -37,7 +37,7 @@ Avoid undefined behavior unless it is the target; otherwise failure gives weak e
 
 ## Verdict and score expectations
 
-Use `must_pass` for every required case. Use `must_fail` only for specific constructed counterexamples. Use `must_fail_one_of` for a pool whose collective purpose is to kill the program. Add `score_min` and `score_max` when partial credit matters, and measure score using case points rather than inferred group names. A subtask solution passing one larger case is not automatically a weakness; require rejection only where its assumptions or resource limit are genuinely violated.
+Use `must_pass` for every required case. Use `must_fail` only for specific constructed counterexamples. Use `must_fail_one_of` for a pool whose collective purpose is to kill the program. Add `score_min` and `score_max` when partial credit matters, and calculate them from the frozen scoring units. Award a bundle only when all member cases and dependency units pass; never sum member cases independently. A subtask solution passing one larger case is not automatically a weakness; require rejection only where its assumptions or resource limit are genuinely violated.
 
 ## Survivor diagnosis
 

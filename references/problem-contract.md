@@ -2,11 +2,20 @@
 
 ## Table of contents
 
-1. Required facts
-2. Recommended workspace
-3. Pipeline configuration
-4. Text and source-of-truth rules
-5. Judge modes
+1. Intake authority
+2. Required facts
+3. Recommended workspace
+4. Pipeline configuration
+5. Text and source-of-truth rules
+6. Judge modes
+
+## Intake authority
+
+Start from `assets/task.example.json` and complete the gate in [intake-and-clarification.md](intake-and-clarification.md). Every required preference stores a concrete `value` and a `source`.
+
+Use `user` when the user selected the value and `delegated` only after the user explicitly authorized Codex to decide it. Use `discovered` and `derived` for technical facts supported by source evidence or a recorded derivation. Use `unresolved` while a conflict or missing answer remains. Do not enter a mutating workflow step while a required preference is unresolved.
+
+Keep the original-problem path, output path, case count, deliverables, scoring mode and design authority, statement style, rewrite scope, target audience, and package format in this contract. The final concrete scoring mode must match `pipeline.json`.
 
 ## Required facts
 
@@ -51,11 +60,18 @@ Adapt the layout to the surrounding package. If it requires `src/std.cpp`, `src/
 
 Start from `assets/pipeline.example.json`. Paths are relative to the configuration file. Require:
 
+- `task_contract`: path to a completed task contract.
 - `case_count`: exact number of pairs.
-- `cases`: exactly that many objects with unique `id`, integer `seed`, `profile`, group, and optional points.
+- `cases`: exactly that many objects with unique `id`, integer `seed`, `profile`, and validator group.
 - `sources.generator`, `sources.validator`, and `sources.oracle`.
+- `scoring`: one explicit `per_case`, `bundled`, or `mixed` scoring definition.
+- `memory_limit_mib`: positive release memory limit matching the task contract.
 
 Each case must also provide nonempty semantic `tags` and a written `purpose` explaining what the point proves or attacks.
+
+Treat `scoring.units` as the score source of truth. Every unit has a unique id, a type (`case` or `bundle`), a nonempty list of case ids, nonnegative points, and optional `depends_on` unit ids. Every configured case belongs to exactly one unit. Dependencies must be acyclic. Unit points must sum to `scoring.total_points`.
+
+For `per_case`, every unit is a single-case `case` unit. For `bundled`, every unit is a `bundle` and is awarded only when all member cases and dependency units pass. For `mixed`, require at least one single-case unit and at least one multi-case bundle. Do not derive scored points from legacy `case.points`.
 
 Optional fields include `compiler`, `cxxflags`, output directories, timeouts, `output_compare` (`tokens` or `exact`), `max_output_bytes`, `generator_args`, `validator_args`, `text_files`, timing controls, and `solutions`.
 
@@ -74,6 +90,8 @@ Each solution expectation may contain:
 Use `["*"]` for all configured cases. `must_fail_one_of` means at least one listed case must produce a non-AC verdict.
 
 For every candidate solution, also record its role, algorithm, complexity, and supported domain. A wrong solution additionally records `defect_layer` (`conceptual`, `complexity`, or `implementation`), the isolated defect, and the intended killing profile.
+
+Calculate `score_min` and `score_max` under the configured scoring units, including all-or-nothing bundles and dependencies. Preserve a per-unit score breakdown in the verdict artifact.
 
 ## Text and source-of-truth rules
 
