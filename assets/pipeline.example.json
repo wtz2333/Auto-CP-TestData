@@ -1,0 +1,62 @@
+{
+  "case_count": 3,
+  "compiler": "g++",
+  "cxxflags": ["-std=c++14", "-O2", "-Wall", "-Wextra", "-Wshadow"],
+  "build_dir": "build",
+  "data_dir": "data",
+  "logs_dir": "logs",
+  "time_limit_ms": 2000,
+  "oracle_timeout_ms": 30000,
+  "generator_timeout_ms": 5000,
+  "validator_timeout_ms": 2000,
+  "max_output_bytes": 67108864,
+  "output_compare": "tokens",
+  "require_lf": true,
+  "normalize_lf": true,
+  "check_reproducibility": true,
+  "calibrate_time_limit": true,
+  "benchmark_runs": 3,
+  "time_limit_multiplier": 3,
+  "time_limit_min_seconds": 1,
+  "time_limit_max_seconds": 5,
+  "text_files": [],
+  "sources": {
+    "generator": "gen.cpp",
+    "validator": "valid.cpp",
+    "oracle": "std.cpp"
+  },
+  "generator_args": [
+    "--case", "{case_index}",
+    "--seed", "{seed}",
+    "--profile", "{profile}"
+  ],
+  "validator_args": ["--group", "{group}"],
+  "cases": [
+    {"id": "001", "seed": 1, "profile": "minimum", "group": "small", "points": 20, "tags": ["sanity", "boundary"], "purpose": "smallest legal input"},
+    {"id": "002", "seed": 2, "profile": "maximum", "group": "full", "points": 40, "benchmark": true, "tags": ["boundary"], "purpose": "maximum scale and values"},
+    {"id": "003", "seed": 3, "profile": "random", "group": "full", "points": 40, "tags": ["coverage"], "purpose": "seeded structural diversity"}
+  ],
+  "solutions": [
+    {
+      "name": "independent-correct",
+      "source": "solutions/accepted/alt.cpp",
+      "role": "accepted",
+      "algorithm": "independently implemented full solution",
+      "complexity": "record the proved time and space bounds",
+      "supported_domain": "full constraints",
+      "expect": {"must_pass": ["*"], "score_min": 100, "score_max": 100}
+    },
+    {
+      "name": "known-wrong",
+      "source": "solutions/wrong/example.cpp",
+      "role": "wrong",
+      "algorithm": "record the plausible but flawed approach",
+      "complexity": "record its actual time and space bounds",
+      "supported_domain": "record any range where it is valid",
+      "defect_layer": "conceptual",
+      "defect": "record the isolated false assumption",
+      "kill_profile": "record the named adversarial profile",
+      "expect": {"must_fail_one_of": ["*"], "score_max": 80}
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Build CP Problem Package"
+  short_description: "Rewrite, audit data, and write editorials"
+  default_prompt: "Use $build-cp-testdata to inventory this original-problem folder, freeze a Chinese statement, audit existing data before regeneration, validate and score-test every case, write the complete editorial, and finish with an evidence-backed go/no-go audit."
