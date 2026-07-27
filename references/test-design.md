@@ -9,6 +9,7 @@
 5. Structure-specific features
 6. Complexity pressure
 7. Reproducibility
+8. Bounded bundled sets
 
 ## Case planning
 
@@ -17,6 +18,8 @@ Give every case a written purpose. Allocate limited slots in this order: boundar
 ## Group manifest
 
 Separate validator groups from scoring units. A validator group names the extra legality promise checked for a case. A scoring unit names how points are awarded. They may use similar labels, but neither is inferred from the other.
+
+Generate judge subtasks only from scoring units. Never derive `data/config.yaml` from validator groups, filename ranges in a sample, or a copied example configuration.
 
 Make scoring-unit membership mutually exclusive: every formal case belongs to exactly one unit. For each unit, state its case ids, type (`case` or `bundle`), points, dependencies, extra constraints, intended algorithm, generator modes, critical properties, and expected attacked mistakes. Put concrete seeds and parameters in the executable case list.
 
@@ -61,3 +64,7 @@ Match the shape to the suspected complexity. Stress the dimension actually squar
 ## Reproducibility
 
 Record case id, validator group, scoring unit, profile, seed, generator hash, input hash, and answer hash. Record points and dependencies once on the scoring unit rather than copying them onto member cases. Reject duplicate formal inputs by hash unless a case explicitly declares a defensible evaluation reason. If a random seed kills a program, keep that seed and explain the responsible feature.
+
+## Bounded bundled sets
+
+When the intake selects bounded strength-driven `bundled` scoring, start with every supplied formal input and do not remove a legal one. Keep at least 20 and at most 40 cases. Add a case only for a named uncovered boundary, a minimized or structured hack against an evidenced defect, or a measured complexity stress. Re-run the complete solution matrix after each addition and stop once every planned defect and partial complexity class has the intended bundled score range. Record the final exact count in `pipeline.json` and the release report.

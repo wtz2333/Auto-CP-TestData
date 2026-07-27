@@ -1,0 +1,20 @@
+type: default
+subtasks:
+- memory: 512MB
+  score: 20
+  if: []
+  id: 1
+  type: sum
+  cases:
+  - input: 001.in
+    output: 001.ans
+- memory: 512MB
+  score: 80
+  if: [1]
+  id: 2
+  type: min
+  cases:
+  - input: 002.in
+    output: 002.ans
+  - input: 003.in
+    output: 003.ans

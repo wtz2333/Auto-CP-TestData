@@ -10,8 +10,11 @@
         "value": "workspace",
         "source": "user"
       },
-      "case_count": {
-        "value": 3,
+      "case_count_policy": {
+        "value": {
+          "mode": "fixed",
+          "count": 3
+        },
         "source": "user"
       },
       "deliverables": {

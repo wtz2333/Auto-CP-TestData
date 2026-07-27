@@ -5,6 +5,9 @@
   "cxxflags": ["-std=c++14", "-O2", "-Wall", "-Wextra", "-Wshadow"],
   "build_dir": "build",
   "data_dir": "data",
+  "testdata_config": {
+    "path": "data/config.yaml"
+  },
   "logs_dir": "logs",
   "time_limit_ms": 2000,
   "memory_limit_mib": 512,

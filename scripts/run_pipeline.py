@@ -118,6 +118,7 @@ class Pipeline:
         self.manifest_path = self.output_path("manifest_path", "manifest.json")
         self.verdicts_path = self.output_path("verdicts_path", "verdicts.json")
         self.report_path = self.output_path("report_path", "report.md")
+        self.testdata_config_path = self.data_dir / "config.yaml"
         self.max_output = int(self.config.get("max_output_bytes", 64 * 1024 * 1024))
         self.time_limit = int(self.config.get("time_limit_ms", 2000))
         self.memory_limit_mib = int(self.config.get("memory_limit_mib", 0))
@@ -205,6 +206,7 @@ class Pipeline:
             if case.get("allow_duplicate") and not str(case.get("duplicate_reason", "")).strip():
                 raise PipelineError(f"case {case_id} allows duplication but has no duplicate_reason")
 
+        self.validate_testdata_config()
         self.validate_scoring()
         self.validate_task_contract()
 
@@ -271,6 +273,121 @@ class Pipeline:
             ):
                 raise PipelineError(f"wrong solution {name} needs a rejection expectation")
 
+    def validate_testdata_config(self) -> None:
+        config = self.config.get("testdata_config")
+        if not isinstance(config, dict):
+            raise PipelineError("testdata_config must be an object")
+
+        path_value = config.get("path")
+        if not isinstance(path_value, str) or not path_value.strip():
+            raise PipelineError("testdata_config.path must be a nonempty path")
+        path = Path(path_value)
+        if not path.is_absolute():
+            path = self.root / path
+        self.testdata_config_path = ensure_under(
+            self.root, path, "testdata_config.path"
+        )
+        if (
+            self.testdata_config_path.parent != self.data_dir
+            or self.testdata_config_path.name != "config.yaml"
+        ):
+            raise PipelineError(
+                "testdata_config.path must be the config.yaml file in data_dir"
+            )
+
+        if any(re.fullmatch(r"[0-9]{3}", case_id) is None for case_id in self.case_ids):
+            raise PipelineError(
+                "testdata_config requires every case id to use exactly three digits"
+            )
+
+    def render_testdata_config(self) -> bytes:
+        lines = [
+            "type: default",
+            "subtasks:",
+        ]
+        generated_ids = {
+            unit["id"]: index
+            for index, unit in enumerate(self.scoring_units, start=1)
+        }
+        for index, unit in enumerate(self.scoring_units, start=1):
+            dependencies = ", ".join(
+                str(generated_ids[dependency])
+                for dependency in unit["depends_on"]
+            )
+            hydro_type = "min" if unit["type"] == "bundle" else "sum"
+            lines.extend(
+                [
+                    f"- memory: {self.memory_limit_mib}MB",
+                    f"  score: {unit['points']:g}",
+                    f"  if: [{dependencies}]",
+                    f"  id: {index}",
+                    f"  type: {hydro_type}",
+                    "  cases:",
+                ]
+            )
+            for case_id in unit["cases"]:
+                lines.extend(
+                    [
+                        f"  - input: {case_id}.in",
+                        f"    output: {case_id}.ans",
+                    ]
+                )
+        lines.append("")
+        return "\n".join(lines).encode("utf-8")
+
+    def write_testdata_config(self, check_only: bool = False) -> dict[str, Any]:
+        for case_id in self.case_ids:
+            for suffix in ("in", "ans"):
+                path = self.data_dir / f"{case_id}.{suffix}"
+                if not path.is_file():
+                    raise PipelineError(
+                        f"testdata_config references missing file: {path.name}"
+                    )
+
+        expected = self.render_testdata_config()
+        if check_only:
+            if not self.testdata_config_path.is_file():
+                raise PipelineError(
+                    f"missing test data configuration: {self.testdata_config_path}"
+                )
+            actual = self.testdata_config_path.read_bytes()
+            if actual != expected:
+                raise PipelineError(
+                    "data/config.yaml is stale or does not match testdata_config"
+                )
+        else:
+            atomic_write(self.testdata_config_path, expected)
+            if self.testdata_config_path.read_bytes() != expected:
+                raise PipelineError("data/config.yaml failed its write-back check")
+
+        return {
+            "path": str(self.testdata_config_path.relative_to(self.root)).replace(
+                "\\", "/"
+            ),
+            "sha256": sha256_bytes(expected),
+            "memory": f"{self.memory_limit_mib}MB",
+            "subtasks": [
+                {
+                    "id": index,
+                    "source_unit": unit["id"],
+                    "score": unit["points"],
+                    "type": "min" if unit["type"] == "bundle" else "sum",
+                    "if": [
+                        next(
+                            dependency_index
+                            for dependency_index, candidate in enumerate(
+                                self.scoring_units, start=1
+                            )
+                            if candidate["id"] == dependency
+                        )
+                        for dependency in unit["depends_on"]
+                    ],
+                    "cases": unit["cases"],
+                }
+                for index, unit in enumerate(self.scoring_units, start=1)
+            ],
+        }
+
     def validate_task_contract(self) -> None:
         if self.task_path is None:
             raise PipelineError("task_contract is required")
@@ -284,7 +401,7 @@ class Pipeline:
         required = {
             "original_problem_dir",
             "output_dir",
-            "case_count",
+            "case_count_policy",
             "deliverables",
             "scoring_mode",
             "scoring_plan",
@@ -311,22 +428,56 @@ class Pipeline:
                 raise PipelineError(f"delegated preference {field} needs decision_note")
             values[field] = entry["value"]
 
+        if preferences["original_problem_dir"]["source"] != "user":
+            raise PipelineError("preference original_problem_dir must be supplied by the user")
         for field in ("original_problem_dir", "output_dir"):
-            if preferences[field]["source"] != "user":
-                raise PipelineError(f"preference {field} must be supplied by the user")
             if not isinstance(values[field], str) or not values[field].strip():
                 raise PipelineError(f"preference {field} must be a nonempty path")
 
-        if preferences["case_count"]["source"] != "user":
-            raise PipelineError("preference case_count must be supplied by the user")
-        if (
-            not isinstance(values["case_count"], int)
-            or isinstance(values["case_count"], bool)
-            or values["case_count"] <= 0
-        ):
-            raise PipelineError("preference case_count must be a positive integer")
-        if values["case_count"] != len(self.cases):
-            raise PipelineError("task contract case_count does not match pipeline cases")
+        if preferences["case_count_policy"]["source"] != "user":
+            raise PipelineError("preference case_count_policy must be supplied by the user")
+        case_policy = values["case_count_policy"]
+        if not isinstance(case_policy, dict):
+            raise PipelineError("preference case_count_policy must be an object")
+        policy_mode = case_policy.get("mode")
+        if policy_mode == "fixed":
+            count = case_policy.get("count")
+            if (
+                not isinstance(count, int)
+                or isinstance(count, bool)
+                or count <= 0
+            ):
+                raise PipelineError("fixed case_count_policy count must be positive")
+            if count != len(self.cases):
+                raise PipelineError(
+                    "task contract fixed case count does not match pipeline cases"
+                )
+        elif policy_mode == "bounded_adaptive":
+            minimum = case_policy.get("min")
+            maximum = case_policy.get("max")
+            if (
+                not isinstance(minimum, int)
+                or isinstance(minimum, bool)
+                or not isinstance(maximum, int)
+                or isinstance(maximum, bool)
+                or minimum <= 0
+                or minimum > maximum
+            ):
+                raise PipelineError("bounded case_count_policy needs 0 < min <= max")
+            if not minimum <= len(self.cases) <= maximum:
+                raise PipelineError(
+                    "pipeline case count is outside the bounded case_count_policy"
+                )
+            if not case_policy.get("retain_existing"):
+                raise PipelineError(
+                    "bounded case_count_policy must retain supplied formal inputs"
+                )
+            if not case_policy.get("fill_by_hacks"):
+                raise PipelineError(
+                    "bounded case_count_policy must fill gaps with targeted hacks"
+                )
+        else:
+            raise PipelineError("preference case_count_policy mode is invalid")
 
         deliverables = values["deliverables"]
         if (
@@ -341,6 +492,15 @@ class Pipeline:
             raise PipelineError("preference scoring_mode is invalid")
         if values["scoring_mode"] != self.scoring_mode:
             raise PipelineError("task contract scoring_mode does not match pipeline scoring.mode")
+        if policy_mode == "bounded_adaptive":
+            if values["scoring_mode"] != "bundled":
+                raise PipelineError(
+                    "bounded case_count_policy is supported only for bundled scoring"
+                )
+            if case_policy["min"] < 20 or case_policy["max"] > 40:
+                raise PipelineError(
+                    "bounded bundled case_count_policy must stay within 20..40"
+                )
 
         scoring_plan = values["scoring_plan"]
         if preferences["scoring_plan"]["source"] != "user":
@@ -799,23 +959,48 @@ class Pipeline:
 
         for index, case in enumerate(self.cases, 1):
             case_id = str(case["id"])
-            command = [str(generator), *self.format_generator_args(case, index)]
-            first = run_process(command, None, self.generator_timeout, self.max_output)
-            atomic_write(self.logs_dir / f"generate-{case_id}.log", first.stderr)
-            if first.status != "OK":
-                raise PipelineError(f"generator {first.status} on case {case_id}")
-            first.stdout = self.normalize_generated_text(first.stdout, f"generated input {case_id}")
-
-            if self.config.get("check_reproducibility", True):
-                second = run_process(command, None, self.generator_timeout, self.max_output)
-                if second.status == "OK":
-                    second.stdout = self.normalize_generated_text(
-                        second.stdout, f"repeated generated input {case_id}"
+            source_input = case.get("input_path")
+            provenance = "existing" if source_input else "generated"
+            source_input_hash = None
+            if source_input:
+                source_path = (self.root / str(source_input)).resolve()
+                if not source_path.is_file():
+                    raise PipelineError(
+                        f"adopted input for case {case_id} does not exist: {source_input}"
                     )
-                if second.status != "OK" or first.stdout != second.stdout:
-                    raise PipelineError(f"generator is not reproducible on case {case_id}")
+                source_bytes = source_path.read_bytes()
+                source_input_hash = sha256_bytes(source_bytes)
+                first_stdout = self.normalize_generated_text(
+                    source_bytes, f"adopted input {case_id}"
+                )
+                atomic_write(
+                    self.logs_dir / f"adopt-{case_id}.log",
+                    (
+                        f"source={source_path}\n"
+                        f"source_sha256={source_input_hash}\n"
+                        f"delivered_sha256={sha256_bytes(first_stdout)}\n"
+                    ).encode(),
+                )
+            else:
+                command = [str(generator), *self.format_generator_args(case, index)]
+                first = run_process(command, None, self.generator_timeout, self.max_output)
+                atomic_write(self.logs_dir / f"generate-{case_id}.log", first.stderr)
+                if first.status != "OK":
+                    raise PipelineError(f"generator {first.status} on case {case_id}")
+                first_stdout = self.normalize_generated_text(
+                    first.stdout, f"generated input {case_id}"
+                )
 
-            input_hash = sha256_bytes(first.stdout)
+                if self.config.get("check_reproducibility", True):
+                    second = run_process(command, None, self.generator_timeout, self.max_output)
+                    if second.status == "OK":
+                        second.stdout = self.normalize_generated_text(
+                            second.stdout, f"repeated generated input {case_id}"
+                        )
+                    if second.status != "OK" or first_stdout != second.stdout:
+                        raise PipelineError(f"generator is not reproducible on case {case_id}")
+
+            input_hash = sha256_bytes(first_stdout)
             if input_hash in seen_input_hashes:
                 earlier = seen_input_hashes[input_hash]
                 if not case.get("allow_duplicate"):
@@ -824,18 +1009,18 @@ class Pipeline:
                 seen_input_hashes[input_hash] = case_id
 
             validator_command = [str(validator), *self.format_validator_args(case, index)]
-            checked = run_process(validator_command, first.stdout, self.validator_timeout, self.max_output)
+            checked = run_process(validator_command, first_stdout, self.validator_timeout, self.max_output)
             atomic_write(self.logs_dir / f"validate-{case_id}.log", checked.stdout + checked.stderr)
             if checked.status != "OK":
                 raise PipelineError(f"validator rejected case {case_id}")
 
-            extra_token = first.stdout + b"\n__VALIDATOR_MUST_REJECT_EXTRA_TOKEN__\n"
+            extra_token = first_stdout + b"\n__VALIDATOR_MUST_REJECT_EXTRA_TOKEN__\n"
             attacked = run_process(validator_command, extra_token, self.validator_timeout, self.max_output)
             atomic_write(self.logs_dir / f"validate-extra-token-{case_id}.log", attacked.stdout + attacked.stderr)
             if attacked.status == "OK":
                 raise PipelineError(f"validator accepted an extra token on case {case_id}")
 
-            answered = run_process([str(oracle)], first.stdout, self.oracle_timeout, self.max_output)
+            answered = run_process([str(oracle)], first_stdout, self.oracle_timeout, self.max_output)
             oracle_log = bytearray(answered.stderr)
             if answered.status != "OK":
                 raise PipelineError(f"oracle {answered.status} on case {case_id}")
@@ -845,7 +1030,7 @@ class Pipeline:
             if case.get("benchmark"):
                 run_count = int(self.config.get("benchmark_runs", 3))
                 for run_index in range(2, run_count + 1):
-                    repeated = run_process([str(oracle)], first.stdout, self.oracle_timeout, self.max_output)
+                    repeated = run_process([str(oracle)], first_stdout, self.oracle_timeout, self.max_output)
                     oracle_log.extend(b"\n--- benchmark run " + str(run_index).encode() + b" ---\n")
                     oracle_log.extend(repeated.stderr)
                     if repeated.status != "OK":
@@ -859,18 +1044,43 @@ class Pipeline:
                 benchmark_measurements[case_id] = oracle_runs
             atomic_write(self.logs_dir / f"oracle-{case_id}.log", bytes(oracle_log))
 
+            source_answer_hash = None
+            if case.get("answer_path"):
+                source_answer_path = (self.root / str(case["answer_path"])).resolve()
+                if not source_answer_path.is_file():
+                    raise PipelineError(
+                        f"supplied answer for case {case_id} does not exist: "
+                        f"{case['answer_path']}"
+                    )
+                source_answer_bytes = source_answer_path.read_bytes()
+                source_answer_hash = sha256_bytes(source_answer_bytes)
+                normalized_source_answer = self.normalize_generated_text(
+                    source_answer_bytes, f"supplied answer {case_id}"
+                )
+                if normalized_source_answer.split() != answered.stdout.split():
+                    raise PipelineError(
+                        f"supplied answer disagrees with oracle on case {case_id}"
+                    )
+
             input_path = self.data_dir / f"{case_id}.in"
             answer_path = self.data_dir / f"{case_id}.ans"
-            atomic_write(input_path, first.stdout)
+            atomic_write(input_path, first_stdout)
             atomic_write(answer_path, answered.stdout)
             manifest_cases.append(
                 {
                     **case,
                     "input": str(input_path.relative_to(self.root)),
                     "answer": str(answer_path.relative_to(self.root)),
+                    "provenance": provenance,
+                    "source_input": str(source_input) if source_input else None,
+                    "source_input_sha256": source_input_hash,
+                    "source_answer": (
+                        str(case.get("answer_path")) if case.get("answer_path") else None
+                    ),
+                    "source_answer_sha256": source_answer_hash,
                     "input_sha256": input_hash,
                     "answer_sha256": sha256_bytes(answered.stdout),
-                    "input_bytes": len(first.stdout),
+                    "input_bytes": len(first_stdout),
                     "answer_bytes": len(answered.stdout),
                     "oracle_runs_ms": oracle_runs,
                     "oracle_slowest_ms": max(oracle_runs),
@@ -905,6 +1115,7 @@ class Pipeline:
             self.gate_errors.append(f"missing configured data files: {missing}")
         if extras:
             self.gate_errors.append(f"unconfigured data files present (not deleted): {extras}")
+        testdata_config = self.write_testdata_config()
 
         sources = self.config["sources"]
         generation_decision = "no_go" if self.gate_errors else "go"
@@ -929,6 +1140,7 @@ class Pipeline:
             "environment": self.environment,
             "timing": self.timing_summary,
             "scoring": self.config["scoring"],
+            "testdata_config": testdata_config,
             "cases": manifest_cases,
             "gate_errors": list(self.gate_errors),
         }
@@ -941,6 +1153,7 @@ class Pipeline:
         return actual.split() == expected.split()
 
     def evaluate(self) -> dict[str, Any]:
+        self.write_testdata_config(check_only=True)
         matrix: dict[str, dict[str, dict[str, Any]]] = {}
         scores: dict[str, float] = {}
         score_breakdowns: dict[str, dict[str, dict[str, Any]]] = {}
@@ -1043,6 +1256,9 @@ class Pipeline:
             f"- Total points: {self.total_points:g}",
             f"- Compare mode: `{self.compare_mode}`",
             f"- Memory limit: {self.memory_limit_mib} MiB",
+            "- Test data config: `"
+            + str(self.testdata_config_path.relative_to(self.root)).replace("\\", "/")
+            + "`",
         ]
         if self.environment:
             lines.extend(
@@ -1124,7 +1340,12 @@ class Pipeline:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("config", type=Path, help="pipeline JSON configuration")
-    parser.add_argument("stage", choices=("build", "generate", "evaluate", "all"), nargs="?", default="all")
+    parser.add_argument(
+        "stage",
+        choices=("build", "config", "generate", "evaluate", "all"),
+        nargs="?",
+        default="all",
+    )
     args = parser.parse_args()
 
     try:
@@ -1132,6 +1353,9 @@ def main() -> int:
         if args.stage == "build":
             pipeline.build(include_solutions=True)
             pipeline.write_report(None, "build")
+        elif args.stage == "config":
+            pipeline.write_testdata_config()
+            pipeline.write_report(None, "testdata-config")
         elif args.stage == "generate":
             pipeline.build(include_solutions=False)
             pipeline.generate()

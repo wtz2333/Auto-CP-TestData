@@ -42,7 +42,10 @@ class PipelineConfigTests(unittest.TestCase):
                 "preferences": {
                     "original_problem_dir": {"value": "original", "source": "user"},
                     "output_dir": {"value": "workspace", "source": "user"},
-                    "case_count": {"value": 3, "source": "user"},
+                    "case_count_policy": {
+                        "value": {"mode": "fixed", "count": 3},
+                        "source": "user",
+                    },
                     "deliverables": {
                         "value": ["statement", "data", "editorial"],
                         "source": "user",
@@ -128,6 +131,7 @@ class PipelineConfigTests(unittest.TestCase):
             "memory_limit_mib": 512,
             "time_limit_ms": 2000,
             "output_compare": "tokens",
+            "testdata_config": {"path": "data/config.yaml"},
             "cxxflags": ["-std=c++14", "-O2"],
             "sources": {
                 "generator": "gen.cpp",
@@ -216,6 +220,33 @@ class PipelineConfigTests(unittest.TestCase):
         self.assertEqual(pipeline.scoring_mode, "mixed")
         self.assertEqual(pipeline.total_points, 100)
 
+    def test_testdata_config_is_derived_from_scoring_units(self) -> None:
+        pipeline = self.load()
+        pipeline.data_dir.mkdir(parents=True)
+        for case_id in pipeline.case_ids:
+            (pipeline.data_dir / f"{case_id}.in").write_bytes(b"input\n")
+            (pipeline.data_dir / f"{case_id}.ans").write_bytes(b"answer\n")
+        metadata = pipeline.write_testdata_config()
+        expected = (
+            SKILL_ROOT / "assets" / "testdata-config.example.yaml"
+        ).read_bytes()
+        self.assertEqual((pipeline.data_dir / "config.yaml").read_bytes(), expected)
+        self.assertEqual(
+            [(item["score"], item["type"], item["if"]) for item in metadata["subtasks"]],
+            [(20.0, "sum", []), (80.0, "min", [1])],
+        )
+
+    def test_testdata_config_rejects_stale_content(self) -> None:
+        pipeline = self.load()
+        pipeline.data_dir.mkdir(parents=True)
+        for case_id in pipeline.case_ids:
+            (pipeline.data_dir / f"{case_id}.in").write_bytes(b"input\n")
+            (pipeline.data_dir / f"{case_id}.ans").write_bytes(b"answer\n")
+        pipeline.write_testdata_config()
+        (pipeline.data_dir / "config.yaml").write_bytes(b"type: default\n")
+        with self.assertRaisesRegex(PipelineError, "stale"):
+            pipeline.write_testdata_config(check_only=True)
+
     def test_per_case_scoring(self) -> None:
         config = self.base_config()
         config["scoring"] = {
@@ -252,6 +283,27 @@ class PipelineConfigTests(unittest.TestCase):
         task["intake"]["preferences"]["scoring_mode"]["value"] = "bundled"
         score, _ = self.load(config, task).score_row(self.row("001", "002"))
         self.assertEqual(score, 20)
+
+    def test_bounded_adaptive_policy_requires_bundled_scoring(self) -> None:
+        task = self.base_task()
+        task["intake"]["preferences"]["case_count_policy"]["value"] = {
+            "mode": "bounded_adaptive",
+            "min": 3,
+            "max": 40,
+            "retain_existing": True,
+            "fill_by_hacks": True,
+        }
+        with self.assertRaisesRegex(PipelineError, "only for bundled"):
+            self.load(task=task)
+
+    def test_delegated_output_path_is_allowed_with_reason(self) -> None:
+        task = self.base_task()
+        task["intake"]["preferences"]["output_dir"] = {
+            "value": "workspace/rewritten-title",
+            "source": "delegated",
+            "decision_note": "User delegated the rewritten title and same-named folder.",
+        }
+        self.load(task=task)
 
     def test_missing_required_preference_is_rejected(self) -> None:
         task = self.base_task()
