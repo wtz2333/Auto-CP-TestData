@@ -15,9 +15,23 @@ The official pages are normative. When internet access is available, open the cu
 - Insert a half-width space between Chinese and adjacent English, digits, formulas, or inline code, but not before Chinese punctuation.
 - Keep terminology and variable capitalization consistent.
 
+## Shared Markdown syntax
+
+These rules apply equally to statements and editorials:
+
+- Use ordinary Markdown headings, paragraphs, lists, supported tables, fenced code blocks, inline code, and links.
+- Put every mathematical variable, numeric expression, relation, subscript, superscript, and formula in Markdown math.
+- Use `$...$` for inline formulas. Put each opening and closing `$$` delimiter for display math on its own line.
+- Allow LaTeX commands only inside `$...$` or `$$...$$`. Do not use `\(...\)` or `\[...\]` as delimiters.
+- Do not replace formulas with backticks. Reserve inline code for filenames, literal input or output strings, language identifiers, and code that readers must copy exactly.
+- Do not use raw HTML, custom directives, or platform-specific fences unless the frozen package contract and target renderer explicitly support them.
+- Use only info strings supported by the target renderer. Statements normally use `text`; editorials may additionally use `cpp` for C++ source.
+- Balance math delimiters, backticks, and code fences. Check list indentation, table shape, link targets, escaping, and filenames.
+- Render or preview the finished document with the target engine and inspect formulas, tables, code blocks, links, and line wrapping before freeze.
+
 ## Statement text
 
-- Use Luogu-compatible Markdown. Mathematical notation must remain as formulas written with `$...$` and `$$...$$`; do not flatten formulas into code spans. Forbid unsupported `\(...\)` and `\[...\]` math delimiters, LaTeX commands outside math spans, raw HTML, custom directives, and unsupported sample fences.
+- Follow every rule in Shared typography and Shared Markdown syntax. Use `text` fences for displayed sample input and output unless the frozen renderer requires another supported form.
 - Keep the background helpful and short; it must not obstruct the mathematics.
 - Make the description concise, rigorous, and understandable without relying on samples.
 - Prefer ordinary, direct Chinese over invented conventions. Do not write “称……是指……” when a familiar idea can be stated plainly in the sentence or table cell that uses it.
@@ -51,8 +65,11 @@ Have a reviewer read only the final statement for fluency and concision. Semanti
 
 ## Editorial text
 
+- Follow every rule in Shared typography and Shared Markdown syntax. Use `cpp` fences for C++ source and `text` fences for plain input, output, traces, or pseudocode when a fence is actually needed.
 - Keep only problem-related content; omit chatter, self-promotion, and unrelated stories.
 - Summarize a long statement instead of copying it.
 - Explain the main algorithm or data structure concretely and justify important conclusions.
 - Put the explanation outside code comments. Include readable code when the delivery requires it.
 - Use Markdown links for cited material and keep images simple, clear, and necessary.
+- Do not put formulas in inline code, use raw HTML for layout, or rely on code comments to carry an omitted proof.
+- Apply [human-readable-contest-text.md](human-readable-contest-text.md) and reject canned openings, stock transitions, synonym cycling, vague efficiency claims, repeated summaries, and ceremonial conclusions.

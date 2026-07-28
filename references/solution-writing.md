@@ -2,6 +2,8 @@
 
 Follow the textual and formatting requirements of the [Luogu solution standard](https://help.luogu.com.cn/rules/academic/solution-standard) when Luogu-compatible Markdown is requested.
 
+Read [luogu-text-format.md](luogu-text-format.md) and [human-readable-contest-text.md](human-readable-contest-text.md) before drafting or reviewing. The editorial inherits every Markdown syntax, mathematics, typography, and render requirement used for the statement unless this reference gives a stricter editorial-specific rule.
+
 ## Required structure
 
 Write one coherent Markdown editorial. Use this order unless the problem needs a clearer local variation:
@@ -35,17 +37,22 @@ Use the same scoring units as the statement, manifest, pipeline, and verdict rep
 
 Write as an experienced contestant explaining the solution to another contestant. Prefer short declarative sentences and concrete logical transitions. Introduce notation only when it reduces repetition. Explain why an observation matters before giving a formula or code detail.
 
-Avoid generic openings, ceremonial conclusions, repeated restatements, fake quotations, excessive headings, adjective-heavy praise, and phrases such as “显然” when the implication is not immediate. Do not narrate the writing process or mention prompts. Keep one purpose per paragraph and remove any sentence that neither clarifies, proves, analyzes, nor implements the solution.
+Begin with the problem-specific obstacle or observation. Avoid generic openings, ceremonial conclusions, repeated restatements, fake quotations, excessive headings, adjective-heavy praise, and phrases such as “显然” when the implication is not immediate. Do not narrate the writing process or mention prompts. Keep one purpose per paragraph and remove any sentence that neither clarifies, proves, analyzes, nor implements the solution.
 
 Maintain a modest formal tone: define states and invariants precisely, but do not turn routine operations into long lemmas. Use small examples only when they resolve a likely conceptual jump.
 
+Keep one stable name for each object; do not cycle through synonyms for variety. Prefer exact operations and complexity changes over vague claims such as “显著提升效率”. Use a transition only when it marks a real logical relation. Do not force every method into a three-step list or repeat the same sentence pattern across sections. Stop after the last necessary proof, implementation, or complexity point instead of appending encouragement or a generic summary.
+
 ## Luogu text and Markdown rules
 
-- Use full-width Chinese punctuation and end complete sentences with punctuation.
-- Put mathematical variables, constants, operators, and expressions in LaTeX; do not put ordinary English words, algorithm names, people, or titles in LaTeX.
-- Insert a half-width space between Chinese and adjacent English, digits, or formulas; do not insert one before Chinese punctuation.
+- Apply every rule in Shared typography and Shared Markdown syntax in [luogu-text-format.md](luogu-text-format.md); none of the statement's delimiter, raw-HTML, custom-directive, fence-balance, link, table, or render checks may be skipped for an editorial.
+- Put mathematical variables, constants, operators, and expressions in `$...$` or `$$...$$`; do not put ordinary English words, algorithm names, people, or titles in math.
+- Put display-math delimiters on their own lines. Forbid `\(...\)`, `\[...\]`, LaTeX commands outside math, and formulas disguised as inline code.
 - Use `\text{}` for prose inside formulas and `\texttt{}` for literal strings inside formulas.
-- Keep variable capitalization and terminology consistent.
+- Reserve backticks for filenames, literal strings, identifiers, and code. Use `cpp` fenced blocks for C++ and `text` fenced blocks for plain input, output, traces, or pseudocode.
+- Use ordinary Markdown headings, paragraphs, lists, supported tables, and links. Do not use raw HTML, custom directives, decorative layout tricks, or unsupported sample/code fences.
+- Balance math delimiters, backticks, and code fences. Validate list indentation, table shape, links, escaping, and filenames, then render with the target engine and inspect every formula, table, and code block.
+- Use full-width Chinese punctuation, required half-width spacing, consistent capitalization, and stable terminology throughout.
 - Keep content relevant. Summarize long statements instead of copying the whole statement.
 - Explain the algorithm outside code comments. Code comments may supplement but never replace analysis.
 - Use ordinary Markdown links for cited material and record sources without copying protected content.
@@ -59,4 +66,4 @@ Use the same notation in prose, formulas, and code. Map each important state or 
 
 ## Editorial review
 
-Review against the frozen statement, subtask table, manifest, score matrix, and std. Reject the editorial if it skips a distinct partial method, claims an untested score, contains a proof gap, contradicts code, overexplains routine syntax, or reads like a reusable generic answer rather than this problem's reasoning.
+Review against the frozen statement, subtask table, manifest, score matrix, and std. Run the revision pass in [human-readable-contest-text.md](human-readable-contest-text.md), then render the Markdown with the target engine. Reject the editorial if it skips a distinct partial method, claims an untested score, contains a proof gap, contradicts code, fails any shared statement/editorial Markdown check, overexplains routine syntax, or reads like a reusable generic answer rather than this problem's reasoning.

@@ -1,6 +1,6 @@
 # Statement rewriting and freeze
 
-Read [luogu-text-format.md](luogu-text-format.md) before drafting or reviewing the statement. Apply only its textual and mathematical writing rules; do not import unrelated platform policy.
+Read [luogu-text-format.md](luogu-text-format.md) and [human-readable-contest-text.md](human-readable-contest-text.md) before drafting or reviewing the statement. Apply only their contest-text, Markdown, and mathematical writing rules; do not import unrelated platform policy or casual/blog-style guidance.
 
 ## Table of contents
 
@@ -91,21 +91,15 @@ Run a separate natural-prose review even when semantic reviewers agree. Ask the 
 - solution-oriented models appearing only in subtask rows;
 - background or theme text that does not help comprehension;
 - repeated caveats, long sentences, and table cells that need a preceding glossary;
+- canned openings, stock transitions, vague claims, unstable terminology, forced lists, and repeated conclusions;
 - wording that is correct only after reading a sample.
 
 Reject the draft until every such issue is removed or justified by a concrete ambiguity that cannot be resolved more simply. Record raw reviews, disposition reasons, fixes, and rechecks. Reopen this gate after any later change to definition, interface, constraints, subtasks, or samples; invalidate and regenerate affected data.
 
 ## Render and freeze
 
-Write `statement.md` in the selected platform's Markdown dialect:
+Write `statement.md` in the selected platform's Markdown dialect and follow every rule in Shared typography and Shared Markdown syntax in [luogu-text-format.md](luogu-text-format.md). For statements, use the supported `text` info string for sample input and output, and reserve backticks for filenames, literal output, and identifiers that contestants must copy exactly.
 
-- use headings, paragraphs, lists, supported Markdown tables, fenced code blocks with the `text` info string, inline code for literals, and ordinary links;
-- put every mathematical variable, numeric expression, relation, subscript, superscript, and formula in Markdown math;
-- use `$...$` for inline formulas and put `$$...$$` display formulas on their own lines;
-- allow LaTeX mathematical commands only inside `$...$` or `$$...$$`;
-- do not use `\(...\)` or `\[...\]` as math delimiters, raw LaTeX commands outside math spans, raw HTML, custom directives, or unsupported sample fences;
-- do not replace mathematical formulas with code spans; reserve backticks for filenames, literal output, and identifiers that contestants must copy exactly.
-
-Check lists, tables, code fences, backticks, links, escaping, filenames, and renderer syntax. Verify that dollar math delimiters are balanced, display delimiters occupy separate lines, no `\(...\)` or `\[...\]` delimiter remains, and no LaTeX command appears outside a math span. Render the final statement with the target engine and inspect every formula. If a PDF is produced, verify it opens and inspect every page for garbling, formula or table errors, bad page breaks, overflow, and wrong sample references.
+Apply the shared delimiter, fence, link, table, escaping, filename, and render checks without omission. If a PDF is produced, verify it opens and inspect every page for garbling, formula or table errors, bad page breaks, overflow, and wrong sample references.
 
 Freeze only when the change record is complete, semantic and natural-prose reviews pass, samples validate and cross-check, and the statement, validator, and oracle share one interpretation.
