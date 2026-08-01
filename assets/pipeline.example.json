@@ -17,7 +17,7 @@
   "max_output_bytes": 67108864,
   "output_compare": "tokens",
   "polyhedron_package": {
-    "enabled": true,
+    "enabled": false,
     "path": "polyhedron.zip"
   },
   "require_lf": true,

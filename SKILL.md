@@ -106,7 +106,7 @@ Accept `--case`, `--seed`, and `--profile`, and emit one complete file on stdout
 
 ### 7. Generate, validate, and answer
 
-Create `task.json` from [assets/task.example.json](assets/task.example.json) and `pipeline.json` from [assets/pipeline.example.json](assets/pipeline.example.json). Declare `testdata_config.path` as `data/config.yaml`, read [references/testdata-config.md](references/testdata-config.md), and then run:
+Create `task.json` from [assets/task.example.json](assets/task.example.json) and `pipeline.json` from [assets/pipeline.example.json](assets/pipeline.example.json). Before running either example, resolve its unconfirmed Polyhedron placeholders from the user's explicit answer to questionnaire item 11: set `polyhedron_zip` to a user-sourced Boolean and set `polyhedron_package.enabled` to the same Boolean; never infer or leave the example value unresolved. Declare `testdata_config.path` as `data/config.yaml`, read [references/testdata-config.md](references/testdata-config.md), and then run:
 
 ```text
 python scripts/run_pipeline.py pipeline.json all

@@ -336,14 +336,37 @@ class PipelineConfigTests(unittest.TestCase):
         task = json.loads(
             (SKILL_ROOT / "assets" / "task.example.json").read_text(encoding="utf-8")
         )
-        self.assertIs(
-            task["intake"]["preferences"]["polyhedron_zip"]["value"], True
-        )
-        self.assertIs(config["polyhedron_package"]["enabled"], True)
+        polyhedron_preference = task["intake"]["preferences"]["polyhedron_zip"]
+        self.assertIs(polyhedron_preference["value"], False)
+        self.assertEqual(polyhedron_preference["source"], "unresolved")
+        self.assertIs(config["polyhedron_package"]["enabled"], False)
         self.assertEqual(config["polyhedron_package"]["path"], "polyhedron.zip")
-        pipeline = self.load(config, task)
-        self.assertEqual(pipeline.scoring_mode, "mixed")
-        self.assertEqual(pipeline.total_points, 100)
+        with self.assertRaisesRegex(
+            PipelineError, "source must be user or delegated"
+        ):
+            self.load(config, task)
+
+        declined_task = copy.deepcopy(task)
+        declined_config = copy.deepcopy(config)
+        declined_task["intake"]["preferences"]["polyhedron_zip"] = {
+            "value": False,
+            "source": "user",
+        }
+        declined_pipeline = self.load(declined_config, declined_task)
+        self.assertFalse(declined_pipeline.polyhedron_package_enabled)
+
+        accepted_task = copy.deepcopy(task)
+        accepted_config = copy.deepcopy(config)
+        accepted_task["intake"]["preferences"]["polyhedron_zip"] = {
+            "value": True,
+            "source": "user",
+        }
+        accepted_config["polyhedron_package"]["enabled"] = True
+        accepted_pipeline = self.load(accepted_config, accepted_task)
+        self.assertTrue(accepted_pipeline.polyhedron_package_enabled)
+        self.assertEqual(
+            accepted_pipeline.polyhedron_package_path.name, "polyhedron.zip"
+        )
 
     def test_polyhedron_package_is_built_and_reported_after_acceptance(self) -> None:
         config = self.base_config()
