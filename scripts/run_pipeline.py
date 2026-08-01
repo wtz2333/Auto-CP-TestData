@@ -1508,6 +1508,18 @@ def write_initialization_failure_report(
     return report_path
 
 
+def try_write_initialization_failure_report(
+    config_path: Path, error: str
+) -> None:
+    try:
+        write_initialization_failure_report(config_path, error)
+    except (OSError, RuntimeError, TypeError, ValueError) as report_exc:
+        print(
+            f"pipeline initialization report error: {report_exc}",
+            file=sys.stderr,
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("config", type=Path, help="pipeline JSON configuration")
@@ -1549,7 +1561,7 @@ def main() -> int:
                 pipeline.build(include_solutions=True)
                 pipeline.generate()
                 verdicts = pipeline.evaluate()
-            except (PipelineError, OSError, ValueError) as exc:
+            except (PipelineError, OSError, TypeError, ValueError) as exc:
                 pipeline.polyhedron_package_status = "skipped_upstream_failure"
                 pipeline.polyhedron_package_metadata = None
                 preparation_error = f"Polyhedron preparation failed: {exc}"
@@ -1588,16 +1600,12 @@ def main() -> int:
         return 0
     except PipelineError as exc:
         if pipeline is None:
-            try:
-                write_initialization_failure_report(args.config, str(exc))
-            except (OSError, RuntimeError, ValueError) as report_exc:
-                print(
-                    f"pipeline initialization report error: {report_exc}",
-                    file=sys.stderr,
-                )
+            try_write_initialization_failure_report(args.config, str(exc))
         print(f"pipeline error: {exc}", file=sys.stderr)
         return 2
-    except (OSError, ValueError) as exc:
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        if pipeline is None:
+            try_write_initialization_failure_report(args.config, str(exc))
         print(f"pipeline system error: {exc}", file=sys.stderr)
         return 2
 

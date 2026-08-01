@@ -710,6 +710,46 @@ class PipelineConfigTests(unittest.TestCase):
         self.assertIn("must stay under", report)
         self.assertNotIn(previous_sha, report)
 
+    def test_malformed_numeric_configuration_persists_initialization_failure(self) -> None:
+        malformed_values = [
+            ("not-an-int", "not-an-int"),
+            (None, "NoneType"),
+        ]
+        for memory_limit, error_fragment in malformed_values:
+            with self.subTest(memory_limit=memory_limit):
+                config = self.base_config()
+                pipeline = self.load(config=config)
+                previous_package, previous_sha = (
+                    self.write_previous_polyhedron_artifacts(pipeline)
+                )
+                config["memory_limit_mib"] = memory_limit
+                pipeline.config_path.write_text(
+                    json.dumps(config, ensure_ascii=False) + "\n",
+                    encoding="utf-8",
+                )
+
+                exit_code, _, stderr = self.run_real_cli(
+                    pipeline.config_path, "all"
+                )
+
+                self.assertEqual(exit_code, 2)
+                self.assertNotIn("Traceback", stderr)
+                self.assertIn("pipeline system error", stderr)
+                self.assertEqual(
+                    pipeline.polyhedron_package_path.read_bytes(),
+                    previous_package,
+                )
+                report = pipeline.report_path.read_text(encoding="utf-8")
+                self.assertIn("Decision: **no_go**", report)
+                self.assertIn(
+                    "Polyhedron package status: `initialization_failed`",
+                    report,
+                )
+                self.assertIn("not updated by this run", report)
+                self.assertIn("previous run", report)
+                self.assertIn(error_fragment, report)
+                self.assertNotIn(previous_sha, report)
+
     def test_upstream_gate_failure_marks_old_zip_as_stale_in_new_report(self) -> None:
         config = self.base_config()
         task = self.base_task()
