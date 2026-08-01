@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import decimal
 import hashlib
 import json
 import tempfile
@@ -702,6 +703,49 @@ class PolyhedronPackageTests(unittest.TestCase):
             ["33.333333333", "33.333333333", "33.333333334"],
         )
         self.assertEqual(sum(map(Decimal, rendered_scores)), Decimal(100))
+
+    def test_global_decimal_precision_does_not_change_archive(self) -> None:
+        (self.data_dir / "003.in").write_bytes(b"7 8\n")
+        (self.data_dir / "003.ans").write_bytes(b"15\n")
+        points = (33.333333333, 33.333333333, 33.333333334)
+        units = [
+            {
+                "id": f"part-{index}",
+                "type": "case",
+                "cases": [case_id],
+                "points": score,
+                "depends_on": [],
+            }
+            for index, (case_id, score) in enumerate(
+                zip(("001", "002", "003"), points), start=1
+            )
+        ]
+        saved_context = decimal.getcontext().copy()
+        try:
+            self.build(
+                case_ids=["001", "002", "003"], scoring_units=units
+            )
+            default_bytes = (self.root / "polyhedron.zip").read_bytes()
+            with zipfile.ZipFile(self.root / "polyhedron.zip") as archive:
+                default_metadata = archive.read(
+                    "polyhedron-export/testdata/polyhedron.metadata"
+                )
+
+            decimal.getcontext().prec = 5
+            self.build(
+                case_ids=["001", "002", "003"], scoring_units=units
+            )
+            low_precision_bytes = (self.root / "polyhedron.zip").read_bytes()
+            with zipfile.ZipFile(self.root / "polyhedron.zip") as archive:
+                low_precision_metadata = archive.read(
+                    "polyhedron-export/testdata/polyhedron.metadata"
+                )
+        finally:
+            decimal.setcontext(saved_context)
+
+        self.assertEqual(low_precision_bytes, default_bytes)
+        self.assertEqual(low_precision_metadata, default_metadata)
+        self.assertIn(b"    expectScore: 100\n", low_precision_metadata)
 
     def test_scoring_dependencies_are_valid_and_acyclic(self) -> None:
         def units(

@@ -82,6 +82,50 @@ def _validate_case_ids(case_ids: Sequence[str]) -> tuple[str, ...]:
     return normalized
 
 
+def _sum_decimals_exactly(values: Sequence[Decimal]) -> Decimal:
+    components: list[tuple[int, int]] = []
+    for value in values:
+        sign, digits, exponent = value.as_tuple()
+        if not isinstance(exponent, int):
+            raise PackageError("scoring points total must be finite and positive")
+        coefficient = int("".join(str(digit) for digit in digits) or "0")
+        if sign:
+            coefficient = -coefficient
+        components.append((coefficient, exponent))
+    minimum_exponent = min(exponent for _, exponent in components)
+    total_coefficient = sum(
+        coefficient * 10 ** (exponent - minimum_exponent)
+        for coefficient, exponent in components
+    )
+    if total_coefficient == 0:
+        return Decimal((0, (0,), 0))
+    sign = int(total_coefficient < 0)
+    digits = tuple(int(digit) for digit in str(abs(total_coefficient)))
+    return Decimal((sign, digits, minimum_exponent))
+
+
+def _format_decimal_exactly(value: Decimal) -> str:
+    sign, digits, exponent = value.as_tuple()
+    if not isinstance(exponent, int):
+        raise PackageError("score must be finite")
+    coefficient = int("".join(str(digit) for digit in digits) or "0")
+    if coefficient == 0:
+        return "0"
+    while coefficient % 10 == 0:
+        coefficient //= 10
+        exponent += 1
+    text = str(coefficient)
+    if exponent >= 0:
+        rendered = text + "0" * exponent
+    else:
+        decimal_position = len(text) + exponent
+        if decimal_position > 0:
+            rendered = text[:decimal_position] + "." + text[decimal_position:]
+        else:
+            rendered = "0." + "0" * (-decimal_position) + text
+    return "-" + rendered if sign else rendered
+
+
 def _validate_scoring_units(
     scoring_units: Sequence[Mapping[str, Any]],
     memory_limit_mib: int,
@@ -112,7 +156,7 @@ def _validate_scoring_units(
     seen_ids: set[str] = set()
     formal_cases = set(formal_case_ids)
     assigned_cases: set[str] = set()
-    point_total = Decimal(0)
+    point_values: list[Decimal] = []
     validated: list[dict[str, Any]] = []
     for index, unit in enumerate(normalized, start=1):
         unit_id = unit.get("id")
@@ -153,7 +197,7 @@ def _validate_scoring_units(
             raise PackageError(
                 f"scoring unit {unit_id} points must be a finite nonnegative number"
             )
-        point_total += (
+        point_values.append(
             Decimal(points) if isinstance(points, int) else Decimal(repr(points))
         )
         dependencies = unit.get("depends_on")
@@ -186,6 +230,7 @@ def _validate_scoring_units(
         raise PackageError(
             "formal cases missing from scoring units: " + ", ".join(missing_cases)
         )
+    point_total = _sum_decimals_exactly(point_values)
     if not point_total.is_finite() or point_total <= 0:
         raise PackageError("scoring points total must be finite and positive")
 
@@ -269,7 +314,7 @@ def _render_problem_yaml(title: str) -> bytes:
 
 def _render_metadata(title: str, total_score: Decimal) -> bytes:
     scalar = json.dumps(title, ensure_ascii=False)
-    rendered_total = format(total_score.normalize(), "f")
+    rendered_total = _format_decimal_exactly(total_score)
     return (
         f"title: {scalar}\n"
         "solutions:\n"
