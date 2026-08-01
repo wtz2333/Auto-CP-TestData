@@ -1479,30 +1479,45 @@ def main() -> int:
             verdicts = pipeline.evaluate()
             pipeline.write_report(verdicts, "candidate-evaluation")
         elif args.stage in {"package", "all"}:
-            pipeline.build(include_solutions=True)
-            pipeline.generate()
-            verdicts = pipeline.evaluate()
-            should_package = (
-                args.stage == "package" or pipeline.polyhedron_package_enabled
-            )
-            if pipeline.gate_errors:
+            verdicts: dict[str, Any] | None = None
+            completed_gate = "polyhedron-preparation"
+            preparation_error: str | None = None
+            try:
+                pipeline.build(include_solutions=True)
+                pipeline.generate()
+                verdicts = pipeline.evaluate()
+            except (PipelineError, OSError, ValueError) as exc:
                 pipeline.polyhedron_package_status = "skipped_upstream_failure"
                 pipeline.polyhedron_package_metadata = None
-            elif should_package:
-                try:
-                    pipeline.package_polyhedron()
-                except PipelineError as exc:
+                preparation_error = f"Polyhedron preparation failed: {exc}"
+                pipeline.gate_errors.append(preparation_error)
+            else:
+                should_package = (
+                    args.stage == "package"
+                    or pipeline.polyhedron_package_enabled
+                )
+                if pipeline.gate_errors:
                     pipeline.polyhedron_package_status = (
-                        "failed_preserved_previous"
+                        "skipped_upstream_failure"
                     )
                     pipeline.polyhedron_package_metadata = None
-                    pipeline.gate_errors.append(str(exc))
-            completed_gate = (
-                "build-generation-evaluation-package"
-                if pipeline.polyhedron_package_metadata is not None
-                else "build-generation-evaluation"
-            )
+                elif should_package:
+                    try:
+                        pipeline.package_polyhedron()
+                    except PipelineError as exc:
+                        pipeline.polyhedron_package_status = (
+                            "failed_preserved_previous"
+                        )
+                        pipeline.polyhedron_package_metadata = None
+                        pipeline.gate_errors.append(str(exc))
+                completed_gate = (
+                    "build-generation-evaluation-package"
+                    if pipeline.polyhedron_package_metadata is not None
+                    else "build-generation-evaluation"
+                )
             pipeline.write_report(verdicts, completed_gate)
+            if preparation_error is not None:
+                print(f"pipeline error: {preparation_error}", file=sys.stderr)
         if pipeline.gate_errors:
             print(f"pipeline completed with {len(pipeline.gate_errors)} failed gate(s)", file=sys.stderr)
             return 2

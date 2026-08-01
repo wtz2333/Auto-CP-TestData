@@ -622,6 +622,63 @@ class PipelineConfigTests(unittest.TestCase):
         self.assertIn("previous run", report)
         self.assertNotIn(previous_sha, report)
 
+    def test_cli_persists_polyhedron_preparation_failures(self) -> None:
+        scenarios = [
+            ("all", "generate", "generator preparation failed"),
+            ("package", "build", "build preparation failed"),
+        ]
+        for stage, failing_step, error_text in scenarios:
+            with self.subTest(stage=stage, failing_step=failing_step):
+                config = self.base_config()
+                task = self.base_task()
+                self.enable_polyhedron(config, task)
+                pipeline = self.load(config, task)
+                previous_package, previous_sha = (
+                    self.write_previous_polyhedron_artifacts(pipeline)
+                )
+
+                with (
+                    mock.patch.object(pipeline, "build") as build,
+                    mock.patch.object(pipeline, "generate") as generate,
+                    mock.patch.object(pipeline, "evaluate") as evaluate,
+                    mock.patch.object(
+                        pipeline,
+                        "package_polyhedron",
+                        wraps=pipeline.package_polyhedron,
+                    ) as package_polyhedron,
+                ):
+                    failing_mock = build if failing_step == "build" else generate
+                    failing_mock.side_effect = PipelineError(error_text)
+                    exit_code, _, stderr = self.run_cli(pipeline, stage)
+
+                self.assertEqual(exit_code, 2)
+                build.assert_called_once_with(include_solutions=True)
+                if failing_step == "build":
+                    generate.assert_not_called()
+                else:
+                    generate.assert_called_once_with()
+                evaluate.assert_not_called()
+                package_polyhedron.assert_not_called()
+                self.assertEqual(
+                    pipeline.polyhedron_package_path.read_bytes(),
+                    previous_package,
+                )
+                report = pipeline.report_path.read_text(encoding="utf-8")
+                stable_error = f"Polyhedron preparation failed: {error_text}"
+                self.assertIn("Decision: **no_go**", report)
+                self.assertIn(
+                    "Completed gate: `polyhedron-preparation`", report
+                )
+                self.assertIn(
+                    "Polyhedron package status: `skipped_upstream_failure`",
+                    report,
+                )
+                self.assertIn("not updated by this run", report)
+                self.assertIn("previous run", report)
+                self.assertIn(stable_error, report)
+                self.assertIn(stable_error, stderr)
+                self.assertNotIn(previous_sha, report)
+
     def test_testdata_config_is_derived_from_scoring_units(self) -> None:
         pipeline = self.load()
         pipeline.data_dir.mkdir(parents=True)
