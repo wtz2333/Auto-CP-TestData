@@ -136,6 +136,11 @@ class Pipeline:
         self.scoring_units: list[dict[str, Any]] = []
         self.scoring_by_id: dict[str, dict[str, Any]] = {}
         self.scoring_unit_for_case: dict[str, dict[str, Any]] = {}
+        self.polyhedron_zip_requested = False
+        self.polyhedron_package_enabled = False
+        self.polyhedron_package_path = self.root / "polyhedron.zip"
+        self.polyhedron_package_metadata: dict[str, Any] | None = None
+        self.judge_mode = ""
         self.validate_config()
 
     def output_path(self, key: str, default: str) -> Path:
@@ -212,6 +217,7 @@ class Pipeline:
 
         if self.compare_mode not in {"tokens", "exact"}:
             raise PipelineError("output_compare must be 'tokens' or 'exact'")
+        self.validate_polyhedron_package()
         if self.memory_limit_mib <= 0:
             raise PipelineError("memory_limit_mib must be a positive integer")
         text_files = self.config.get("text_files", [])
@@ -272,6 +278,33 @@ class Pipeline:
                 or "score_max" in expect
             ):
                 raise PipelineError(f"wrong solution {name} needs a rejection expectation")
+
+    def validate_polyhedron_package(self) -> None:
+        package = self.config.get("polyhedron_package")
+        if not isinstance(package, dict):
+            raise PipelineError("polyhedron_package must be an object")
+
+        enabled = package.get("enabled")
+        if not isinstance(enabled, bool):
+            raise PipelineError("polyhedron_package.enabled must be a boolean")
+        path = package.get("path")
+        if path != "polyhedron.zip":
+            raise PipelineError("polyhedron_package.path must be polyhedron.zip")
+        if enabled != self.polyhedron_zip_requested:
+            raise PipelineError(
+                "polyhedron_package.enabled does not match task polyhedron_zip preference"
+            )
+        if enabled and not self.judge_mode.lower().startswith("batch-"):
+            raise PipelineError(
+                "Polyhedron package requires standard batch judging"
+            )
+        if enabled and self.compare_mode not in {"tokens", "exact"}:
+            raise PipelineError(
+                "Polyhedron package requires tokens or exact output comparison"
+            )
+
+        self.polyhedron_package_enabled = enabled
+        self.polyhedron_package_path = self.root / path
 
     def validate_testdata_config(self) -> None:
         config = self.config.get("testdata_config")
@@ -409,6 +442,7 @@ class Pipeline:
             "rewrite_scope",
             "target_audience",
             "package_format",
+            "polyhedron_zip",
         }
         missing = sorted(required - set(preferences))
         if missing:
@@ -553,6 +587,12 @@ class Pipeline:
             if not isinstance(values[field], str) or not values[field].strip():
                 raise PipelineError(f"preference {field} must be nonempty")
 
+        if preferences["polyhedron_zip"]["source"] != "user":
+            raise PipelineError("preference polyhedron_zip must be supplied by the user")
+        if not isinstance(values["polyhedron_zip"], bool):
+            raise PipelineError("preference polyhedron_zip must be a boolean")
+        self.polyhedron_zip_requested = values["polyhedron_zip"]
+
         technical = self.task.get("technical_facts")
         required_technical = {
             "language_standard",
@@ -605,6 +645,7 @@ class Pipeline:
         judge_mode = technical_values["judge_mode"]
         if not isinstance(judge_mode, str) or not judge_mode.strip():
             raise PipelineError("technical fact judge_mode must be nonempty")
+        self.judge_mode = str(judge_mode)
         normalized_judge = judge_mode.lower()
         if "tokens" in normalized_judge and self.compare_mode != "tokens":
             raise PipelineError("task judge_mode tokens conflicts with output_compare")

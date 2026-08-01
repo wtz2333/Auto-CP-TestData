@@ -76,6 +76,7 @@ class PipelineConfigTests(unittest.TestCase):
                         "value": "luogu-markdown",
                         "source": "user",
                     },
+                    "polyhedron_zip": {"value": False, "source": "user"},
                 },
             },
             "technical_facts": {
@@ -132,6 +133,10 @@ class PipelineConfigTests(unittest.TestCase):
             "time_limit_ms": 2000,
             "output_compare": "tokens",
             "testdata_config": {"path": "data/config.yaml"},
+            "polyhedron_package": {
+                "enabled": False,
+                "path": "polyhedron.zip",
+            },
             "cxxflags": ["-std=c++14", "-O2"],
             "sources": {
                 "generator": "gen.cpp",
@@ -209,13 +214,21 @@ class PipelineConfigTests(unittest.TestCase):
         score, _ = pipeline.score_row(self.row("001", "002", "003"))
         self.assertEqual(score, 100)
 
-    def test_shipped_examples_validate_together(self) -> None:
+    def test_shipped_examples_validate_with_polyhedron_defaults(self) -> None:
         config = json.loads(
             (SKILL_ROOT / "assets" / "pipeline.example.json").read_text(encoding="utf-8")
         )
         task = json.loads(
             (SKILL_ROOT / "assets" / "task.example.json").read_text(encoding="utf-8")
         )
+        config["polyhedron_package"] = {
+            "enabled": False,
+            "path": "polyhedron.zip",
+        }
+        task["intake"]["preferences"]["polyhedron_zip"] = {
+            "value": False,
+            "source": "user",
+        }
         pipeline = self.load(config, task)
         self.assertEqual(pipeline.scoring_mode, "mixed")
         self.assertEqual(pipeline.total_points, 100)
@@ -366,6 +379,27 @@ class PipelineConfigTests(unittest.TestCase):
         task["intake"]["preferences"]["scoring_mode"]["value"] = "per_case"
         with self.assertRaisesRegex(PipelineError, "does not match"):
             self.load(task=task)
+
+    def test_polyhedron_package_must_match_task_preference(self) -> None:
+        config = self.base_config()
+        config["polyhedron_package"]["enabled"] = True
+        with self.assertRaisesRegex(PipelineError, "does not match"):
+            self.load(config=config)
+
+    def test_polyhedron_package_path_must_be_polyhedron_zip(self) -> None:
+        config = self.base_config()
+        config["polyhedron_package"]["path"] = "dist/problem.zip"
+        with self.assertRaisesRegex(PipelineError, "must be polyhedron.zip"):
+            self.load(config=config)
+
+    def test_polyhedron_package_requires_standard_batch_judging(self) -> None:
+        config = self.base_config()
+        config["polyhedron_package"]["enabled"] = True
+        task = self.base_task()
+        task["intake"]["preferences"]["polyhedron_zip"]["value"] = True
+        task["technical_facts"]["judge_mode"]["value"] = "custom-checker"
+        with self.assertRaisesRegex(PipelineError, "standard batch"):
+            self.load(config=config, task=task)
 
 
 if __name__ == "__main__":
