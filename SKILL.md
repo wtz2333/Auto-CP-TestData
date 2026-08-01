@@ -109,7 +109,7 @@ Accept `--case`, `--seed`, and `--profile`, and emit one complete file on stdout
 Create `task.json` from [assets/task.example.json](assets/task.example.json) and `pipeline.json` from [assets/pipeline.example.json](assets/pipeline.example.json). Before running either example, resolve its unconfirmed Polyhedron placeholders from the user's explicit answer to questionnaire item 11: set `polyhedron_zip` to a user-sourced Boolean and set `polyhedron_package.enabled` to the same Boolean; never infer or leave the example value unresolved. Declare `testdata_config.path` as `data/config.yaml`, read [references/testdata-config.md](references/testdata-config.md), and then run:
 
 ```text
-python scripts/run_pipeline.py pipeline.json all
+python scripts/run_pipeline.py pipeline.json generate
 ```
 
 Use the bundled Python runtime if needed. The runner must derive every YAML subtask from the current `scoring.units`; it must not copy the output-shape example's values. Treat generator failure, validator rejection, oracle timeout/crash, missing output, non-reproducibility, a stale or mismatched judge config, CRLF in required-LF artifacts, or unexplained duplicate inputs as a hard failure. Write answers and `data/config.yaml` atomically. If a portable project requires `run.sh`, make it a fail-fast orchestration wrapper around the same declared case list and fixed seeds rather than a second source of test design.

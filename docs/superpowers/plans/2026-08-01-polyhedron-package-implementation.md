@@ -641,7 +641,7 @@ python -X utf8 -m unittest discover -s scripts -p "test_*.py" -v
 - [ ] **步骤 3：运行技能结构校验**
 
 ```powershell
-python -X utf8 C:\Users\VictorYuan\.codex\skills\.system\skill-creator\scripts\quick_validate.py .
+python -X utf8 "$env:USERPROFILE\.codex\skills\.system\skill-creator\scripts\quick_validate.py" .
 ```
 
 预期：校验器返回成功，frontmatter、名称和目录结构合法。
@@ -649,12 +649,14 @@ python -X utf8 C:\Users\VictorYuan\.codex\skills\.system\skill-creator\scripts\q
 - [ ] **步骤 4：审计发布内容**
 
 ```powershell
-Get-ChildItem -Path SKILL.md,README.md,agents,assets,references,scripts -Recurse -File | Select-String -Pattern 'TO[D]O|TB[D]|owner: 31|project-3SUr4VlN0e-rev3|E:\\Desktop\\题'
+$productionText = Get-ChildItem -Path SKILL.md,README.md,agents,assets,references,scripts -Recurse -File | Where-Object { $_.Extension -in '.md','.json','.yaml','.py','.cpp' }
+$productionText | Select-String -Pattern 'TO[D]O:|TB[D]:|owner:\s*31|project-3SUr4VlN0e-rev3'
+Get-ChildItem -Path docs -Recurse -File -Filter '*.md' | Select-String -Pattern 'E:[\\]Desktop[\\]题|C:[\\]Users[\\]VictorYuan'
 git diff --check
 git status --short
 ```
 
-预期：生产技能文件中无占位符、账户值或机器绝对路径；`git diff --check` 无输出；只有本功能的预期改动。设计与计划文档可以记录用户提供的基准路径。
+预期：生产技能文本中无显式占位标记、账户值或已知样例归档名，设计和计划文档中无上述本机路径；`git diff --check` 无输出；只有本功能的预期改动。
 
 - [ ] **步骤 5：使用原技能记录基线失败，再用新技能前向验证**
 
