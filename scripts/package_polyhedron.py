@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import stat
 import tempfile
 import zipfile
 import zlib
+from collections.abc import Mapping as MappingABC
+from collections.abc import Sequence as SequenceABC
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -21,6 +25,185 @@ class PackageError(RuntimeError):
 _ARCHIVE_ROOT = "polyhedron-export/"
 _TESTDATA_ROOT = f"{_ARCHIVE_ROOT}testdata/"
 _ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+
+
+def _resolve_existing_path(
+    path: Path, *, root: Path | None, label: str, directory: bool
+) -> Path:
+    try:
+        resolved = Path(path).resolve(strict=True)
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise PackageError(f"{label} path is unavailable: {path}") from exc
+    if root is not None:
+        try:
+            resolved.relative_to(root)
+        except ValueError as exc:
+            raise PackageError(f"{label} path must be inside package root") from exc
+    correct_type = resolved.is_dir() if directory else resolved.is_file()
+    expected = "directory" if directory else "file"
+    if not correct_type:
+        raise PackageError(f"{label} must be an existing {expected}")
+    return resolved
+
+
+def _resolve_output_path(path: Path) -> Path:
+    try:
+        return Path(path).resolve(strict=False)
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise PackageError(f"output path is invalid: {path}") from exc
+
+
+def _is_safe_case_id(value: object) -> bool:
+    if not isinstance(value, str) or not value or value in {".", ".."}:
+        return False
+    if "/" in value or "\\" in value or "\x00" in value:
+        return False
+    try:
+        path = Path(value)
+    except (OSError, TypeError, ValueError):
+        return False
+    return not path.is_absolute() and not path.drive and path.name == value
+
+
+def _validate_case_ids(case_ids: Sequence[str]) -> tuple[str, ...]:
+    if isinstance(case_ids, (str, bytes)):
+        raise PackageError("formal case_ids must be a nonempty sequence")
+    try:
+        normalized = tuple(case_ids)
+    except TypeError as exc:
+        raise PackageError("formal case_ids must be a nonempty sequence") from exc
+    if not normalized:
+        raise PackageError("formal case_ids must be a nonempty sequence")
+    for case_id in normalized:
+        if not _is_safe_case_id(case_id):
+            raise PackageError(f"unsafe case id: {case_id!r}")
+    if len(set(normalized)) != len(normalized):
+        raise PackageError("duplicate case id")
+    return normalized
+
+
+def _validate_scoring_units(
+    scoring_units: Sequence[Mapping[str, Any]],
+    memory_limit_mib: int,
+    formal_case_ids: Sequence[str],
+) -> tuple[dict[str, Any], ...]:
+    if (
+        not isinstance(memory_limit_mib, int)
+        or isinstance(memory_limit_mib, bool)
+        or memory_limit_mib <= 0
+    ):
+        raise PackageError("memory_limit_mib must be a positive integer")
+    if isinstance(scoring_units, (str, bytes)) or not isinstance(
+        scoring_units, SequenceABC
+    ):
+        raise PackageError("scoring_units must be a nonempty sequence of mappings")
+    try:
+        normalized = tuple(scoring_units)
+    except (TypeError, ValueError) as exc:
+        raise PackageError(
+            "scoring_units must be a nonempty sequence of mappings"
+        ) from exc
+    if not normalized:
+        raise PackageError("scoring_units must be a nonempty sequence of mappings")
+    for index, unit in enumerate(normalized, start=1):
+        if not isinstance(unit, MappingABC):
+            raise PackageError(f"scoring unit {index} must be a mapping")
+
+    seen_ids: set[str] = set()
+    formal_cases = set(formal_case_ids)
+    assigned_cases: set[str] = set()
+    point_total = Decimal(0)
+    validated: list[dict[str, Any]] = []
+    for index, unit in enumerate(normalized, start=1):
+        unit_id = unit.get("id")
+        if not isinstance(unit_id, str) or not unit_id.strip():
+            raise PackageError(f"scoring unit {index} id must be nonempty")
+        if unit_id in seen_ids:
+            raise PackageError(f"duplicate scoring unit id: {unit_id}")
+        seen_ids.add(unit_id)
+        unit_type = unit.get("type")
+        if not isinstance(unit_type, str) or unit_type not in {"case", "bundle"}:
+            raise PackageError(f"scoring unit {unit_id} has invalid type")
+        cases = unit.get("cases")
+        if not isinstance(cases, list) or not cases:
+            raise PackageError(
+                f"scoring unit {unit_id} cases must be a nonempty list"
+            )
+        for case_id in cases:
+            if not _is_safe_case_id(case_id):
+                raise PackageError(
+                    f"unsafe case id in scoring unit {unit_id}: {case_id!r}"
+                )
+            if case_id not in formal_cases:
+                raise PackageError(f"unknown formal case id: {case_id}")
+            if case_id in assigned_cases:
+                raise PackageError(f"formal case appears more than once: {case_id}")
+            assigned_cases.add(case_id)
+        points = unit.get("points")
+        if (
+            not isinstance(points, (int, float))
+            or isinstance(points, bool)
+            or points <= 0
+            or (isinstance(points, float) and not math.isfinite(points))
+        ):
+            raise PackageError(
+                f"scoring unit {unit_id} points must be a finite positive number"
+            )
+        point_total += (
+            Decimal(points) if isinstance(points, int) else Decimal(repr(points))
+        )
+        dependencies = unit.get("depends_on")
+        if not isinstance(dependencies, list) or not all(
+            isinstance(dependency, str) and dependency
+            for dependency in dependencies
+        ):
+            raise PackageError(
+                f"scoring unit {unit_id} depends_on must be a list of nonempty ids"
+            )
+        if unit_id in dependencies:
+            raise PackageError(f"scoring unit {unit_id} cannot depend on itself")
+        if len(set(dependencies)) != len(dependencies):
+            raise PackageError(
+                f"duplicate scoring dependency in unit {unit_id}"
+            )
+        validated.append(
+            {
+                "id": unit_id,
+                "type": unit_type,
+                "cases": list(cases),
+                "points": points,
+                "depends_on": list(dependencies),
+            }
+        )
+    missing_cases = [
+        case_id for case_id in formal_case_ids if case_id not in assigned_cases
+    ]
+    if missing_cases:
+        raise PackageError(
+            "formal cases missing from scoring units: " + ", ".join(missing_cases)
+        )
+    if abs(point_total - Decimal(100)) > Decimal("1e-9"):
+        raise PackageError("scoring points must total 100")
+
+    graph = {unit["id"]: unit["depends_on"] for unit in validated}
+    for unit_id, dependencies in graph.items():
+        for dependency in dependencies:
+            if dependency not in graph:
+                raise PackageError(
+                    f"unknown scoring dependency {dependency} in unit {unit_id}"
+                )
+
+    resolved: set[str] = set()
+    while len(resolved) != len(graph):
+        ready = [
+            unit_id
+            for unit_id, dependencies in graph.items()
+            if unit_id not in resolved and set(dependencies) <= resolved
+        ]
+        if not ready:
+            raise PackageError("scoring dependency cycle")
+        resolved.update(ready)
+    return tuple(validated)
 
 
 def _read_lf_utf8(path: Path, label: str) -> bytes:
@@ -89,7 +272,7 @@ def _render_scoring_config(
         )
         unit_type = "min" if unit["type"] == "bundle" else "sum"
         points = unit["points"]
-        score = f"{points:g}" if isinstance(points, (int, float)) else str(points)
+        score = str(points) if isinstance(points, int) else repr(points)
         lines.extend(
             [
                 f"- memory: {memory_limit_mib}MB",
@@ -166,7 +349,7 @@ def _write_and_verify_temporary_zip(
             temporary_path.unlink(missing_ok=True)
 
 
-def build_polyhedron_zip(
+def _build_polyhedron_zip(
     *,
     root: Path,
     output_path: Path,
@@ -178,12 +361,28 @@ def build_polyhedron_zip(
     memory_limit_mib: int,
 ) -> dict[str, Any]:
     """Validate accepted artifacts and atomically write a deterministic ZIP."""
-    root = root.resolve()
-    output_path = output_path.resolve()
+    root = _resolve_existing_path(
+        root, root=None, label="package root", directory=True
+    )
+    output_path = _resolve_output_path(output_path)
     if output_path != root / "polyhedron.zip":
         raise PackageError("output path must be the package-root polyhedron.zip")
-    if len(set(case_ids)) != len(case_ids):
-        raise PackageError("duplicate case id")
+    statement_path = _resolve_existing_path(
+        statement_path, root=root, label="statement", directory=False
+    )
+    standard_solution_path = _resolve_existing_path(
+        standard_solution_path,
+        root=root,
+        label="standard solution",
+        directory=False,
+    )
+    data_dir = _resolve_existing_path(
+        data_dir, root=root, label="data directory", directory=True
+    )
+    case_ids = _validate_case_ids(case_ids)
+    scoring_units = _validate_scoring_units(
+        scoring_units, memory_limit_mib, case_ids
+    )
     statement = _read_lf_utf8(statement_path, "statement")
     title = _extract_title(statement)
     standard_solution = _read_lf_utf8(
@@ -191,7 +390,7 @@ def build_polyhedron_zip(
     )
 
     case_members: list[tuple[str, bytes, bool]] = []
-    for case_id in case_ids:
+    for case_id in sorted(case_ids, key=lambda value: value.encode("utf-8")):
         input_bytes = _read_required_bytes(
             data_dir / f"{case_id}.in", "formal data"
         )
@@ -222,13 +421,42 @@ def build_polyhedron_zip(
 
     temporary_path = _write_and_verify_temporary_zip(root, members)
     try:
+        archive_bytes = temporary_path.read_bytes()
         os.replace(temporary_path, output_path)
     finally:
         temporary_path.unlink(missing_ok=True)
 
-    archive_bytes = output_path.read_bytes()
     return {
         "path": "polyhedron.zip",
         "sha256": hashlib.sha256(archive_bytes).hexdigest(),
         "members": [name for name, _, _ in members],
     }
+
+
+def build_polyhedron_zip(
+    *,
+    root: Path,
+    output_path: Path,
+    statement_path: Path,
+    standard_solution_path: Path,
+    data_dir: Path,
+    case_ids: Sequence[str],
+    scoring_units: Sequence[Mapping[str, Any]],
+    memory_limit_mib: int,
+) -> dict[str, Any]:
+    """Validate accepted artifacts and atomically write a deterministic ZIP."""
+    try:
+        return _build_polyhedron_zip(
+            root=root,
+            output_path=output_path,
+            statement_path=statement_path,
+            standard_solution_path=standard_solution_path,
+            data_dir=data_dir,
+            case_ids=case_ids,
+            scoring_units=scoring_units,
+            memory_limit_mib=memory_limit_mib,
+        )
+    except PackageError:
+        raise
+    except (OSError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
+        raise PackageError(f"Polyhedron package I/O failure: {exc}") from exc
