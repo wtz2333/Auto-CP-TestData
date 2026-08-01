@@ -7,6 +7,7 @@ import copy
 import importlib.util
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -17,14 +18,18 @@ from unittest import mock
 
 MODULE_PATH = Path(__file__).with_name("run_pipeline.py")
 SKILL_ROOT = MODULE_PATH.parent.parent
-if str(MODULE_PATH.parent) not in sys.path:
-    sys.path.insert(0, str(MODULE_PATH.parent))
 SPEC = importlib.util.spec_from_file_location("build_cp_run_pipeline", MODULE_PATH)
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError("cannot load run_pipeline.py")
 MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
-SPEC.loader.exec_module(MODULE)
+ORIGINAL_SYS_PATH = list(sys.path)
+try:
+    if str(MODULE_PATH.parent) not in sys.path:
+        sys.path.insert(0, str(MODULE_PATH.parent))
+    SPEC.loader.exec_module(MODULE)
+finally:
+    sys.path[:] = ORIGINAL_SYS_PATH
 Pipeline = MODULE.Pipeline
 PipelineError = MODULE.PipelineError
 
@@ -35,12 +40,10 @@ class CliPipelineFixture:
         *,
         enabled: bool,
         gate_errors: list[str] | None = None,
-        package_error: str | None = None,
     ) -> None:
         self.polyhedron_package_enabled = enabled
         self.polyhedron_package_metadata: dict[str, Any] | None = None
         self.gate_errors = list(gate_errors or [])
-        self.package_error = package_error
         self.report_path = Path("report.md")
         self.calls: list[Any] = []
 
@@ -56,8 +59,6 @@ class CliPipelineFixture:
 
     def package_polyhedron(self) -> dict[str, Any]:
         self.calls.append("package")
-        if self.package_error is not None:
-            raise PipelineError(self.package_error)
         self.polyhedron_package_metadata = {
             "path": "polyhedron.zip",
             "sha256": "a" * 64,
@@ -80,6 +81,26 @@ class PipelineConfigTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
+
+    def test_run_pipeline_supports_script_module_and_package_imports(self) -> None:
+        commands = [
+            [sys.executable, str(MODULE_PATH), "--help"],
+            [sys.executable, "-m", "scripts.run_pipeline", "--help"],
+            [sys.executable, "-c", "import scripts.run_pipeline"],
+        ]
+        for command in commands:
+            with self.subTest(command=command):
+                result = subprocess.run(
+                    command,
+                    cwd=SKILL_ROOT,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(
+                    result.returncode,
+                    0,
+                    result.stderr.decode("utf-8", errors="replace"),
+                )
 
     def base_task(self) -> dict[str, Any]:
         return {
@@ -252,8 +273,23 @@ class PipelineConfigTests(unittest.TestCase):
             (pipeline.data_dir / f"{case_id}.ans").write_bytes(b"answer\n")
         pipeline.write_testdata_config()
 
+    def write_previous_polyhedron_artifacts(
+        self, pipeline: Any
+    ) -> tuple[bytes, str]:
+        package_bytes = b"previous Polyhedron package\n"
+        package_sha = MODULE.sha256_bytes(package_bytes)
+        pipeline.polyhedron_package_path.write_bytes(package_bytes)
+        pipeline.report_path.write_text(
+            "# Previous pipeline report\n\n"
+            "- Decision: **go**\n"
+            "- Polyhedron package status: `built`\n"
+            f"- Polyhedron package SHA-256: `{package_sha}`\n",
+            encoding="utf-8",
+        )
+        return package_bytes, package_sha
+
     def run_cli(
-        self, pipeline: CliPipelineFixture, stage: str
+        self, pipeline: Any, stage: str
     ) -> tuple[int, str, str]:
         stdout = io.StringIO()
         stderr = io.StringIO()
@@ -321,15 +357,34 @@ class PipelineConfigTests(unittest.TestCase):
 
         metadata = pipeline.package_polyhedron()
 
+        expected_members = [
+            "polyhedron-export/",
+            "polyhedron-export/problem.yaml",
+            "polyhedron-export/problem_zh.md",
+            "polyhedron-export/testdata/",
+            "polyhedron-export/testdata/001.in",
+            "polyhedron-export/testdata/001.out",
+            "polyhedron-export/testdata/002.in",
+            "polyhedron-export/testdata/002.out",
+            "polyhedron-export/testdata/003.in",
+            "polyhedron-export/testdata/003.out",
+            "polyhedron-export/testdata/_solution_std.cc",
+            "polyhedron-export/testdata/config.yaml",
+            "polyhedron-export/testdata/polyhedron.metadata",
+        ]
+        self.assertEqual(pipeline.polyhedron_package_status, "built")
         self.assertEqual(metadata["path"], "polyhedron.zip")
         self.assertEqual(
             metadata["sha256"], MODULE.sha256_file(pipeline.polyhedron_package_path)
         )
-        self.assertIn("polyhedron-export/problem.yaml", metadata["members"])
+        self.assertEqual(metadata["members"], expected_members)
         pipeline.write_report(None, "polyhedron-package")
         report = pipeline.report_path.read_text(encoding="utf-8")
+        self.assertIn("Polyhedron package status: `built`", report)
         self.assertIn("Polyhedron package: `polyhedron.zip`", report)
         self.assertIn(metadata["sha256"], report)
+        for member in expected_members:
+            self.assertIn(f"- `{member}`", report)
 
     def test_polyhedron_package_does_not_overwrite_after_upstream_gate_failure(self) -> None:
         config = self.base_config()
@@ -410,18 +465,40 @@ class PipelineConfigTests(unittest.TestCase):
         )
 
     def test_package_cli_fails_clearly_when_packaging_is_disabled(self) -> None:
-        pipeline = CliPipelineFixture(
-            enabled=False, package_error="Polyhedron package is not enabled"
+        pipeline = self.load()
+        previous_package, previous_sha = self.write_previous_polyhedron_artifacts(
+            pipeline
         )
 
-        exit_code, _, stderr = self.run_cli(pipeline, "package")
+        with (
+            mock.patch.object(pipeline, "build") as build,
+            mock.patch.object(pipeline, "generate") as generate,
+            mock.patch.object(pipeline, "evaluate") as evaluate,
+            mock.patch.object(
+                pipeline,
+                "package_polyhedron",
+                wraps=pipeline.package_polyhedron,
+            ) as package_polyhedron,
+        ):
+            exit_code, _, stderr = self.run_cli(pipeline, "package")
 
         self.assertEqual(exit_code, 2)
+        build.assert_not_called()
+        generate.assert_not_called()
+        evaluate.assert_not_called()
+        package_polyhedron.assert_not_called()
+        self.assertIn("1 failed gate", stderr)
         self.assertEqual(
-            pipeline.calls,
-            [("build", True), "generate", "evaluate", "package"],
+            pipeline.polyhedron_package_path.read_bytes(), previous_package
         )
-        self.assertIn("not enabled", stderr)
+        report = pipeline.report_path.read_text(encoding="utf-8")
+        self.assertIn("Decision: **no_go**", report)
+        self.assertIn("Completed gate: `polyhedron-package-preflight`", report)
+        self.assertIn("Polyhedron package status: `disabled`", report)
+        self.assertIn("not updated by this run", report)
+        self.assertIn("previous run", report)
+        self.assertIn("Polyhedron package is not enabled", report)
+        self.assertNotIn(previous_sha, report)
 
     def test_package_cli_does_not_package_when_evaluation_has_gate_errors(self) -> None:
         pipeline = CliPipelineFixture(
@@ -441,6 +518,109 @@ class PipelineConfigTests(unittest.TestCase):
             pipeline.calls,
         )
         self.assertIn("1 failed gate", stderr)
+
+    def test_package_cli_failure_preserves_old_zip_and_overwrites_old_go_report(self) -> None:
+        config = self.base_config()
+        task = self.base_task()
+        self.enable_polyhedron(config, task)
+        pipeline = self.load(config, task)
+        self.write_packaging_artifacts(pipeline)
+        previous_package, previous_sha = self.write_previous_polyhedron_artifacts(
+            pipeline
+        )
+        (pipeline.root / "statement.md").unlink()
+
+        with (
+            mock.patch.object(pipeline, "build"),
+            mock.patch.object(pipeline, "generate"),
+            mock.patch.object(
+                pipeline, "evaluate", return_value={"decision": "go"}
+            ),
+        ):
+            exit_code, _, _ = self.run_cli(pipeline, "package")
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(
+            pipeline.polyhedron_package_path.read_bytes(), previous_package
+        )
+        report = pipeline.report_path.read_text(encoding="utf-8")
+        self.assertIn("Decision: **no_go**", report)
+        self.assertIn(
+            "Polyhedron package status: `failed_preserved_previous`", report
+        )
+        self.assertIn("not updated by this run", report)
+        self.assertIn("previous run", report)
+        self.assertNotIn(previous_sha, report)
+
+    def test_upstream_gate_failure_marks_old_zip_as_stale_in_new_report(self) -> None:
+        config = self.base_config()
+        task = self.base_task()
+        self.enable_polyhedron(config, task)
+        pipeline = self.load(config, task)
+        previous_package, previous_sha = self.write_previous_polyhedron_artifacts(
+            pipeline
+        )
+        pipeline.gate_errors.append("candidate acceptance failed")
+
+        with (
+            mock.patch.object(pipeline, "build"),
+            mock.patch.object(pipeline, "generate"),
+            mock.patch.object(
+                pipeline, "evaluate", return_value={"decision": "no_go"}
+            ),
+            mock.patch.object(
+                pipeline,
+                "package_polyhedron",
+                wraps=pipeline.package_polyhedron,
+            ) as package_polyhedron,
+        ):
+            exit_code, _, _ = self.run_cli(pipeline, "package")
+
+        self.assertEqual(exit_code, 2)
+        package_polyhedron.assert_not_called()
+        self.assertEqual(
+            pipeline.polyhedron_package_path.read_bytes(), previous_package
+        )
+        report = pipeline.report_path.read_text(encoding="utf-8")
+        self.assertIn("Decision: **no_go**", report)
+        self.assertIn(
+            "Polyhedron package status: `skipped_upstream_failure`", report
+        )
+        self.assertIn("not updated by this run", report)
+        self.assertIn("previous run", report)
+        self.assertNotIn(previous_sha, report)
+
+    def test_all_disabled_marks_old_zip_as_stale_without_failing_pipeline(self) -> None:
+        pipeline = self.load()
+        previous_package, previous_sha = self.write_previous_polyhedron_artifacts(
+            pipeline
+        )
+
+        with (
+            mock.patch.object(pipeline, "build"),
+            mock.patch.object(pipeline, "generate"),
+            mock.patch.object(
+                pipeline, "evaluate", return_value={"decision": "go"}
+            ),
+            mock.patch.object(
+                pipeline,
+                "package_polyhedron",
+                wraps=pipeline.package_polyhedron,
+            ) as package_polyhedron,
+        ):
+            exit_code, _, _ = self.run_cli(pipeline, "all")
+
+        self.assertEqual(exit_code, 0)
+        package_polyhedron.assert_not_called()
+        self.assertEqual(
+            pipeline.polyhedron_package_path.read_bytes(), previous_package
+        )
+        report = pipeline.report_path.read_text(encoding="utf-8")
+        self.assertIn("Decision: **go**", report)
+        self.assertIn("Polyhedron package status: `disabled`", report)
+        self.assertIn("not updated by this run", report)
+        self.assertIn("previous run", report)
+        self.assertNotIn(previous_sha, report)
 
     def test_testdata_config_is_derived_from_scoring_units(self) -> None:
         pipeline = self.load()

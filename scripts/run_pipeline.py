@@ -18,7 +18,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from package_polyhedron import PackageError, build_polyhedron_zip
+if __package__:
+    from .package_polyhedron import PackageError, build_polyhedron_zip
+else:
+    from package_polyhedron import PackageError, build_polyhedron_zip
 
 
 class PipelineError(RuntimeError):
@@ -142,6 +145,7 @@ class Pipeline:
         self.polyhedron_package_enabled = False
         self.polyhedron_package_path = self.root / "polyhedron.zip"
         self.polyhedron_package_metadata: dict[str, Any] | None = None
+        self.polyhedron_package_status = "pending"
         self.judge_mode = ""
         self.validate_config()
 
@@ -307,6 +311,7 @@ class Pipeline:
 
         self.polyhedron_package_enabled = enabled
         self.polyhedron_package_path = self.root / path
+        self.polyhedron_package_status = "pending" if enabled else "disabled"
 
     def validate_testdata_config(self) -> None:
         config = self.config.get("testdata_config")
@@ -1291,6 +1296,8 @@ class Pipeline:
         if not self.polyhedron_package_enabled:
             raise PipelineError("Polyhedron package is not enabled")
         if self.gate_errors:
+            self.polyhedron_package_status = "skipped_upstream_failure"
+            self.polyhedron_package_metadata = None
             raise PipelineError("Polyhedron package blocked by upstream gate failures")
         self.write_testdata_config(check_only=True)
         try:
@@ -1307,8 +1314,11 @@ class Pipeline:
                 memory_limit_mib=self.memory_limit_mib,
             )
         except PackageError as exc:
+            self.polyhedron_package_status = "failed_preserved_previous"
+            self.polyhedron_package_metadata = None
             raise PipelineError(f"Polyhedron package failed: {exc}") from exc
         self.polyhedron_package_metadata = metadata
+        self.polyhedron_package_status = "built"
         return metadata
 
     def write_report(self, verdicts: dict[str, Any] | None, completed_gate: str) -> None:
@@ -1323,11 +1333,15 @@ class Pipeline:
             f"- Total points: {self.total_points:g}",
             f"- Compare mode: `{self.compare_mode}`",
             f"- Memory limit: {self.memory_limit_mib} MiB",
+            f"- Polyhedron package status: `{self.polyhedron_package_status}`",
             "- Test data config: `"
             + str(self.testdata_config_path.relative_to(self.root)).replace("\\", "/")
             + "`",
         ]
-        if self.polyhedron_package_metadata is not None:
+        if (
+            self.polyhedron_package_status == "built"
+            and self.polyhedron_package_metadata is not None
+        ):
             lines.extend(
                 [
                     "- Polyhedron package: `polyhedron.zip`",
@@ -1336,6 +1350,15 @@ class Pipeline:
                     + "`",
                 ]
             )
+        else:
+            lines.append("- Polyhedron package: not updated by this run")
+            if self.polyhedron_package_path.exists():
+                lines.append(
+                    "- Existing `polyhedron.zip`: preserved from a previous run; "
+                    "it is not a result of this run"
+                )
+            else:
+                lines.append("- Existing `polyhedron.zip`: none")
         if self.environment:
             lines.extend(
                 [
@@ -1369,6 +1392,16 @@ class Pipeline:
                     "",
                     "- Continue to the next acceptance gate; this checkpoint alone is not a release approval.",
                 ]
+            )
+
+        if (
+            self.polyhedron_package_status == "built"
+            and self.polyhedron_package_metadata is not None
+        ):
+            lines.extend(["", "## Polyhedron package members", ""])
+            lines.extend(
+                f"- `{member}`"
+                for member in self.polyhedron_package_metadata["members"]
             )
 
         lines.extend(["", "## Scoring units", ""])
@@ -1426,7 +1459,12 @@ def main() -> int:
 
     try:
         pipeline = Pipeline(args.config)
-        if args.stage == "build":
+        if args.stage == "package" and not pipeline.polyhedron_package_enabled:
+            pipeline.polyhedron_package_status = "disabled"
+            pipeline.polyhedron_package_metadata = None
+            pipeline.gate_errors.append("Polyhedron package is not enabled")
+            pipeline.write_report(None, "polyhedron-package-preflight")
+        elif args.stage == "build":
             pipeline.build(include_solutions=True)
             pipeline.write_report(None, "build")
         elif args.stage == "config":
@@ -1447,8 +1485,18 @@ def main() -> int:
             should_package = (
                 args.stage == "package" or pipeline.polyhedron_package_enabled
             )
-            if not pipeline.gate_errors and should_package:
-                pipeline.package_polyhedron()
+            if pipeline.gate_errors:
+                pipeline.polyhedron_package_status = "skipped_upstream_failure"
+                pipeline.polyhedron_package_metadata = None
+            elif should_package:
+                try:
+                    pipeline.package_polyhedron()
+                except PipelineError as exc:
+                    pipeline.polyhedron_package_status = (
+                        "failed_preserved_previous"
+                    )
+                    pipeline.polyhedron_package_metadata = None
+                    pipeline.gate_errors.append(str(exc))
             completed_gate = (
                 "build-generation-evaluation-package"
                 if pipeline.polyhedron_package_metadata is not None
