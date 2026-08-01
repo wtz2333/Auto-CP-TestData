@@ -59,6 +59,10 @@
       "package_format": {
         "value": "luogu-markdown",
         "source": "user"
+      },
+      "polyhedron_zip": {
+        "value": true,
+        "source": "user"
       }
     },
     "clarification_log": [

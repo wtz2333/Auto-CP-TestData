@@ -329,21 +329,18 @@ class PipelineConfigTests(unittest.TestCase):
         score, _ = pipeline.score_row(self.row("001", "002", "003"))
         self.assertEqual(score, 100)
 
-    def test_shipped_examples_validate_with_polyhedron_defaults(self) -> None:
+    def test_shipped_examples_validate_together(self) -> None:
         config = json.loads(
             (SKILL_ROOT / "assets" / "pipeline.example.json").read_text(encoding="utf-8")
         )
         task = json.loads(
             (SKILL_ROOT / "assets" / "task.example.json").read_text(encoding="utf-8")
         )
-        config["polyhedron_package"] = {
-            "enabled": False,
-            "path": "polyhedron.zip",
-        }
-        task["intake"]["preferences"]["polyhedron_zip"] = {
-            "value": False,
-            "source": "user",
-        }
+        self.assertIs(
+            task["intake"]["preferences"]["polyhedron_zip"]["value"], True
+        )
+        self.assertIs(config["polyhedron_package"]["enabled"], True)
+        self.assertEqual(config["polyhedron_package"]["path"], "polyhedron.zip")
         pipeline = self.load(config, task)
         self.assertEqual(pipeline.scoring_mode, "mixed")
         self.assertEqual(pipeline.total_points, 100)
