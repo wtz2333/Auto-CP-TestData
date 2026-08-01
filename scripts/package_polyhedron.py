@@ -86,7 +86,7 @@ def _validate_scoring_units(
     scoring_units: Sequence[Mapping[str, Any]],
     memory_limit_mib: int,
     formal_case_ids: Sequence[str],
-) -> tuple[dict[str, Any], ...]:
+) -> tuple[tuple[dict[str, Any], ...], Decimal]:
     if (
         not isinstance(memory_limit_mib, int)
         or isinstance(memory_limit_mib, bool)
@@ -129,6 +129,10 @@ def _validate_scoring_units(
             raise PackageError(
                 f"scoring unit {unit_id} cases must be a nonempty list"
             )
+        if unit_type == "case" and len(cases) != 1:
+            raise PackageError(
+                f"scoring unit {unit_id} type case must contain exactly one case"
+            )
         for case_id in cases:
             if not _is_safe_case_id(case_id):
                 raise PackageError(
@@ -143,11 +147,11 @@ def _validate_scoring_units(
         if (
             not isinstance(points, (int, float))
             or isinstance(points, bool)
-            or points <= 0
+            or points < 0
             or (isinstance(points, float) and not math.isfinite(points))
         ):
             raise PackageError(
-                f"scoring unit {unit_id} points must be a finite positive number"
+                f"scoring unit {unit_id} points must be a finite nonnegative number"
             )
         point_total += (
             Decimal(points) if isinstance(points, int) else Decimal(repr(points))
@@ -182,8 +186,8 @@ def _validate_scoring_units(
         raise PackageError(
             "formal cases missing from scoring units: " + ", ".join(missing_cases)
         )
-    if abs(point_total - Decimal(100)) > Decimal("1e-9"):
-        raise PackageError("scoring points must total 100")
+    if not point_total.is_finite() or point_total <= 0:
+        raise PackageError("scoring points total must be finite and positive")
 
     graph = {unit["id"]: unit["depends_on"] for unit in validated}
     for unit_id, dependencies in graph.items():
@@ -203,7 +207,7 @@ def _validate_scoring_units(
         if not ready:
             raise PackageError("scoring dependency cycle")
         resolved.update(ready)
-    return tuple(validated)
+    return tuple(validated), point_total
 
 
 def _read_lf_utf8(path: Path, label: str) -> bytes:
@@ -222,6 +226,24 @@ def _read_required_bytes(path: Path, label: str) -> bytes:
     if not path.is_file():
         raise PackageError(f"missing {label}: {path.name}")
     return path.read_bytes()
+
+
+def _resolve_formal_data_path(path: Path, root: Path) -> Path:
+    try:
+        resolved = path.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise PackageError(f"missing formal data: {path.name}") from exc
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise PackageError(f"formal data path is unavailable: {path.name}") from exc
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise PackageError(
+            f"formal data {path.name} path must be inside package root"
+        ) from exc
+    if not resolved.is_file():
+        raise PackageError(f"formal data {path.name} must be an existing file")
+    return resolved
 
 
 def _extract_title(statement: bytes) -> str:
@@ -245,14 +267,15 @@ def _render_problem_yaml(title: str) -> bytes:
     ).encode("utf-8")
 
 
-def _render_metadata(title: str) -> bytes:
+def _render_metadata(title: str, total_score: Decimal) -> bytes:
     scalar = json.dumps(title, ensure_ascii=False)
+    rendered_total = format(total_score.normalize(), "f")
     return (
         f"title: {scalar}\n"
         "solutions:\n"
         "  std.cc:\n"
         "    language: cc\n"
-        "    expectScore: 100\n"
+        f"    expectScore: {rendered_total}\n"
         "    expectStatus: 1\n"
     ).encode("utf-8")
 
@@ -380,7 +403,7 @@ def _build_polyhedron_zip(
         data_dir, root=root, label="data directory", directory=True
     )
     case_ids = _validate_case_ids(case_ids)
-    scoring_units = _validate_scoring_units(
+    scoring_units, total_score = _validate_scoring_units(
         scoring_units, memory_limit_mib, case_ids
     )
     statement = _read_lf_utf8(statement_path, "statement")
@@ -391,11 +414,17 @@ def _build_polyhedron_zip(
 
     case_members: list[tuple[str, bytes, bool]] = []
     for case_id in sorted(case_ids, key=lambda value: value.encode("utf-8")):
+        input_path = _resolve_formal_data_path(
+            data_dir / f"{case_id}.in", root
+        )
+        output_path_for_case = _resolve_formal_data_path(
+            data_dir / f"{case_id}.ans", root
+        )
         input_bytes = _read_required_bytes(
-            data_dir / f"{case_id}.in", "formal data"
+            input_path, "formal data"
         )
         output_bytes = _read_required_bytes(
-            data_dir / f"{case_id}.ans", "formal data"
+            output_path_for_case, "formal data"
         )
         case_members.extend(
             [
@@ -416,7 +445,11 @@ def _build_polyhedron_zip(
             _render_scoring_config(scoring_units, memory_limit_mib),
             False,
         ),
-        (f"{_TESTDATA_ROOT}polyhedron.metadata", _render_metadata(title), False),
+        (
+            f"{_TESTDATA_ROOT}polyhedron.metadata",
+            _render_metadata(title, total_score),
+            False,
+        ),
     ]
 
     temporary_path = _write_and_verify_temporary_zip(root, members)

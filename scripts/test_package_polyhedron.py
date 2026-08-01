@@ -344,6 +344,56 @@ class PolyhedronPackageTests(unittest.TestCase):
                 with self.assertRaisesRegex(PackageError, message):
                     self.build(**overrides)
 
+    def test_formal_data_symlink_cannot_escape_package_root(self) -> None:
+        old = b"previous accepted archive"
+        (self.root / "polyhedron.zip").write_bytes(old)
+        with tempfile.TemporaryDirectory() as outside_name:
+            outside = Path(outside_name)
+            for filename in ("001.in", "001.ans"):
+                target = outside / filename
+                target.write_bytes(b"external\n")
+                link = self.data_dir / filename
+                original = link.read_bytes()
+                link.unlink()
+                try:
+                    link.symlink_to(target)
+                except OSError as exc:
+                    link.write_bytes(original)
+                    self.skipTest(f"symlink creation unavailable: {exc}")
+                try:
+                    with self.subTest(filename=filename):
+                        with self.assertRaisesRegex(
+                            PackageError, "formal data.*inside package root"
+                        ):
+                            self.build()
+                finally:
+                    link.unlink(missing_ok=True)
+                    link.write_bytes(original)
+
+        self.assertEqual((self.root / "polyhedron.zip").read_bytes(), old)
+        self.assertEqual(list(self.root.glob(".polyhedron-*.zip.tmp")), [])
+
+    def test_formal_data_resolved_path_is_checked_within_root(self) -> None:
+        with tempfile.TemporaryDirectory() as outside_name:
+            outside_file = Path(outside_name) / "001.in"
+            outside_file.write_bytes(b"external\n")
+            formal_path = self.data_dir / "001.in"
+            path_type = type(formal_path)
+            original_resolve = path_type.resolve
+
+            def controlled_resolve(path: Path, strict: bool = False) -> Path:
+                if path.name == formal_path.name and path.parent.name == "data":
+                    return outside_file
+                return original_resolve(path, strict=strict)
+
+            with mock.patch.object(
+                path_type, "resolve", new=controlled_resolve
+            ):
+                with self.assertRaisesRegex(
+                    PackageError, "formal data.*inside package root"
+                ):
+                    self.build()
+
     def test_case_ids_must_be_safe_single_path_segments(self) -> None:
         old = b"previous accepted archive"
         (self.root / "polyhedron.zip").write_bytes(old)
@@ -456,6 +506,22 @@ class PolyhedronPackageTests(unittest.TestCase):
                 with self.assertRaisesRegex(PackageError, message):
                     self.build(scoring_units=units)
 
+    def test_case_scoring_unit_contains_exactly_one_case(self) -> None:
+        units = [
+            {
+                "id": "invalid-case-unit",
+                "type": "case",
+                "cases": ["001", "002"],
+                "points": 100,
+                "depends_on": [],
+            }
+        ]
+
+        with self.assertRaisesRegex(
+            PackageError, "type case must contain exactly one case"
+        ):
+            self.build(scoring_units=units)
+
     def test_scoring_units_partition_every_formal_case_exactly_once(self) -> None:
         invalid_units = (
             (
@@ -507,8 +573,8 @@ class PolyhedronPackageTests(unittest.TestCase):
                 with self.assertRaisesRegex(PackageError, message):
                     self.build(scoring_units=units)
 
-    def test_scoring_points_are_finite_positive_and_total_one_hundred(self) -> None:
-        for points in (None, 0, -1, float("nan"), float("inf"), "100", True):
+    def test_scoring_points_are_finite_nonnegative_with_positive_total(self) -> None:
+        for points in (None, -1, float("nan"), float("inf"), "100", True):
             with self.subTest(points=points):
                 units = [
                     {
@@ -520,28 +586,87 @@ class PolyhedronPackageTests(unittest.TestCase):
                     }
                 ]
                 with self.assertRaisesRegex(
-                    PackageError, "points must be a finite positive number"
+                    PackageError, "points must be a finite nonnegative number"
                 ):
                     self.build(scoring_units=units)
 
-        wrong_total = [
+        zero_total = [
             {
                 "id": "base",
                 "type": "case",
                 "cases": ["001"],
-                "points": 20,
+                "points": 0,
                 "depends_on": [],
             },
             {
                 "id": "full",
                 "type": "bundle",
                 "cases": ["002"],
-                "points": 79.9,
+                "points": 0,
                 "depends_on": ["base"],
             },
         ]
-        with self.assertRaisesRegex(PackageError, "scoring points must total 100"):
-            self.build(scoring_units=wrong_total)
+        with self.assertRaisesRegex(
+            PackageError, "scoring points total must be finite and positive"
+        ):
+            self.build(scoring_units=zero_total)
+
+    def test_zero_point_unit_is_allowed_when_total_is_positive(self) -> None:
+        units = [
+            {
+                "id": "base",
+                "type": "case",
+                "cases": ["001"],
+                "points": 0,
+                "depends_on": [],
+            },
+            {
+                "id": "full",
+                "type": "bundle",
+                "cases": ["002"],
+                "points": 100,
+                "depends_on": ["base"],
+            },
+        ]
+
+        self.build(scoring_units=units)
+        with zipfile.ZipFile(self.root / "polyhedron.zip") as archive:
+            config = archive.read(
+                "polyhedron-export/testdata/config.yaml"
+            ).decode("utf-8")
+        self.assertIn("  score: 0\n", config)
+        self.assertIn("  score: 100\n", config)
+
+    def test_arbitrary_positive_total_is_preserved_in_config_and_metadata(self) -> None:
+        units = [
+            {
+                "id": "base",
+                "type": "case",
+                "cases": ["001"],
+                "points": 10,
+                "depends_on": [],
+            },
+            {
+                "id": "full",
+                "type": "bundle",
+                "cases": ["002"],
+                "points": 50,
+                "depends_on": ["base"],
+            },
+        ]
+
+        self.build(scoring_units=units)
+        with zipfile.ZipFile(self.root / "polyhedron.zip") as archive:
+            config = archive.read(
+                "polyhedron-export/testdata/config.yaml"
+            ).decode("utf-8")
+            metadata = archive.read(
+                "polyhedron-export/testdata/polyhedron.metadata"
+            ).decode("utf-8")
+        self.assertIn("  score: 10\n", config)
+        self.assertIn("  score: 50\n", config)
+        self.assertIn("    expectScore: 60\n", metadata)
+        self.assertNotIn("    expectScore: 100\n", metadata)
 
     def test_scoring_points_preserve_full_deterministic_precision(self) -> None:
         (self.data_dir / "003.in").write_bytes(b"7 8\n")
