@@ -300,9 +300,15 @@ class Pipeline:
             raise PipelineError(
                 "polyhedron_package.enabled does not match task polyhedron_zip preference"
             )
-        if enabled and not self.judge_mode.lower().startswith("batch-"):
+        if enabled and self.judge_mode not in {
+            "batch-tokens",
+            "batch-exact",
+        }:
+            raise PipelineError("Polyhedron package requires standard batch judging")
+        if enabled and self.judge_mode != f"batch-{self.compare_mode}":
             raise PipelineError(
-                "Polyhedron package requires standard batch judging"
+                "Polyhedron judge_mode/output_compare mismatch: "
+                f"{self.judge_mode} cannot use {self.compare_mode}"
             )
         if enabled and self.compare_mode not in {"tokens", "exact"}:
             raise PipelineError(
@@ -655,9 +661,13 @@ class Pipeline:
         self.judge_mode = str(judge_mode)
         normalized_judge = judge_mode.lower()
         if "tokens" in normalized_judge and self.compare_mode != "tokens":
-            raise PipelineError("task judge_mode tokens conflicts with output_compare")
+            raise PipelineError(
+                "task judge_mode/output_compare mismatch: tokens judging requires tokens"
+            )
         if "exact" in normalized_judge and self.compare_mode != "exact":
-            raise PipelineError("task judge_mode exact conflicts with output_compare")
+            raise PipelineError(
+                "task judge_mode/output_compare mismatch: exact judging requires exact"
+            )
 
     def validate_scoring(self) -> None:
         scoring = self.config.get("scoring")
@@ -1446,6 +1456,58 @@ class Pipeline:
         atomic_write(self.report_path, "\n".join(lines).encode("utf-8"))
 
 
+def write_initialization_failure_report(
+    config_path: Path, error: str
+) -> Path:
+    root = config_path.resolve().parent
+    fallback_report_path = root / "report.md"
+    report_path = fallback_report_path
+    try:
+        raw_config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeError):
+        raw_config = None
+    if isinstance(raw_config, dict):
+        report_value = raw_config.get("report_path")
+        if isinstance(report_value, str) and report_value.strip():
+            try:
+                candidate = Path(report_value)
+                if not candidate.is_absolute():
+                    candidate = root / candidate
+                candidate = ensure_under(root, candidate, "report_path")
+                if not candidate.is_dir():
+                    report_path = candidate
+            except (OSError, PipelineError, RuntimeError, ValueError):
+                report_path = fallback_report_path
+    stable_error = str(error).replace("\r", " ").replace("\n", " ")
+    lines = [
+        "# Test data pipeline report",
+        "",
+        "- Decision: **no_go**",
+        "- Completed gate: `initialization`",
+        "- Polyhedron package status: `initialization_failed`",
+        "- Polyhedron package: not updated by this run",
+    ]
+    if (root / "polyhedron.zip").exists():
+        lines.append(
+            "- Existing `polyhedron.zip`: preserved from a previous run; "
+            "it is not a result of this run"
+        )
+    else:
+        lines.append("- Existing `polyhedron.zip`: none")
+    lines.extend(
+        [
+            "- Overall gate: **FAILED**",
+            "",
+            "## Gate failures",
+            "",
+            f"- Pipeline initialization failed: {stable_error}",
+            "",
+        ]
+    )
+    atomic_write(report_path, "\n".join(lines).encode("utf-8"))
+    return report_path
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("config", type=Path, help="pipeline JSON configuration")
@@ -1457,6 +1519,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    pipeline: Pipeline | None = None
     try:
         pipeline = Pipeline(args.config)
         if args.stage == "package" and not pipeline.polyhedron_package_enabled:
@@ -1524,6 +1587,14 @@ def main() -> int:
         print(f"pipeline passed; report: {pipeline.report_path}")
         return 0
     except PipelineError as exc:
+        if pipeline is None:
+            try:
+                write_initialization_failure_report(args.config, str(exc))
+            except (OSError, RuntimeError, ValueError) as report_exc:
+                print(
+                    f"pipeline initialization report error: {report_exc}",
+                    file=sys.stderr,
+                )
         print(f"pipeline error: {exc}", file=sys.stderr)
         return 2
     except (OSError, ValueError) as exc:

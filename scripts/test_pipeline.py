@@ -279,6 +279,7 @@ class PipelineConfigTests(unittest.TestCase):
         package_bytes = b"previous Polyhedron package\n"
         package_sha = MODULE.sha256_bytes(package_bytes)
         pipeline.polyhedron_package_path.write_bytes(package_bytes)
+        pipeline.report_path.parent.mkdir(parents=True, exist_ok=True)
         pipeline.report_path.write_text(
             "# Previous pipeline report\n\n"
             "- Decision: **go**\n"
@@ -297,6 +298,19 @@ class PipelineConfigTests(unittest.TestCase):
             mock.patch.object(MODULE, "Pipeline", return_value=pipeline),
             mock.patch.object(
                 sys, "argv", ["run_pipeline.py", "pipeline.json", stage]
+            ),
+            mock.patch.object(sys, "stdout", stdout),
+            mock.patch.object(sys, "stderr", stderr),
+        ):
+            exit_code = MODULE.main()
+        return exit_code, stdout.getvalue(), stderr.getvalue()
+
+    def run_real_cli(self, config_path: Path, stage: str) -> tuple[int, str, str]:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with (
+            mock.patch.object(
+                sys, "argv", ["run_pipeline.py", str(config_path), stage]
             ),
             mock.patch.object(sys, "stdout", stdout),
             mock.patch.object(sys, "stderr", stderr),
@@ -328,6 +342,31 @@ class PipelineConfigTests(unittest.TestCase):
 
         score, _ = pipeline.score_row(self.row("001", "002", "003"))
         self.assertEqual(score, 100)
+
+    def test_skill_defers_polyhedron_packaging_until_acceptance(self) -> None:
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        generation_stage = skill.split("### 7.", 1)[1].split("### 8.", 1)[0]
+        self.assertIn(
+            "python scripts/run_pipeline.py pipeline.json generate",
+            generation_stage,
+        )
+        self.assertNotIn("pipeline.json all", generation_stage)
+        self.assertNotIn("pipeline.json package", generation_stage)
+
+        packaging_stage = skill.split("### 11.", 1)[1].split("### 12.", 1)[0]
+        self.assertIn("After acceptance passes", packaging_stage)
+        self.assertIn("pipeline.json package", packaging_stage)
+        self.assertIn("pipeline.json all", packaging_stage)
+
+    def test_repository_docs_do_not_embed_local_machine_paths(self) -> None:
+        docs = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted((SKILL_ROOT / "docs").rglob("*.md"))
+        )
+        self.assertNotIn(r"E:\Desktop\题", docs)
+        self.assertNotIn(r"E:\\Desktop\\题", docs)
+        self.assertNotIn(r"C:\Users\VictorYuan", docs)
+        self.assertNotIn(r"C:\\Users\\VictorYuan", docs)
 
     def test_shipped_examples_validate_together(self) -> None:
         config = json.loads(
@@ -570,6 +609,105 @@ class PipelineConfigTests(unittest.TestCase):
         )
         self.assertIn("not updated by this run", report)
         self.assertIn("previous run", report)
+        self.assertNotIn(previous_sha, report)
+
+    def test_initialization_failure_overwrites_old_go_report_and_preserves_zip(self) -> None:
+        config = self.base_config()
+        task = self.base_task()
+        self.enable_polyhedron(config, task)
+        pipeline = self.load(config, task)
+        previous_package, previous_sha = self.write_previous_polyhedron_artifacts(
+            pipeline
+        )
+        task["technical_facts"]["judge_mode"]["value"] = (
+            "batch-custom-checker"
+        )
+        pipeline.task_path.write_text(
+            json.dumps(task, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+
+        exit_code, _, stderr = self.run_real_cli(pipeline.config_path, "all")
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("standard batch", stderr)
+        self.assertEqual(
+            pipeline.polyhedron_package_path.read_bytes(), previous_package
+        )
+        report = pipeline.report_path.read_text(encoding="utf-8")
+        self.assertIn("Decision: **no_go**", report)
+        self.assertIn("Completed gate: `initialization`", report)
+        self.assertIn(
+            "Polyhedron package status: `initialization_failed`", report
+        )
+        self.assertIn("not updated by this run", report)
+        self.assertIn("previous run", report)
+        self.assertIn("standard batch", report)
+        self.assertNotIn(previous_sha, report)
+
+    def test_initialization_failure_uses_safe_custom_report_path(self) -> None:
+        config = self.base_config()
+        config["report_path"] = "reports/custom-failure.md"
+        task = self.base_task()
+        self.enable_polyhedron(config, task)
+        pipeline = self.load(config, task)
+        _, previous_sha = self.write_previous_polyhedron_artifacts(pipeline)
+        task["technical_facts"]["judge_mode"]["value"] = "batch-tokens"
+        config["output_compare"] = "exact"
+        pipeline.config_path.write_text(
+            json.dumps(config, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+
+        exit_code, _, _ = self.run_real_cli(pipeline.config_path, "package")
+
+        self.assertEqual(exit_code, 2)
+        report = pipeline.report_path.read_text(encoding="utf-8")
+        self.assertIn("Decision: **no_go**", report)
+        self.assertIn(
+            "Polyhedron package status: `initialization_failed`", report
+        )
+        self.assertIn("mismatch", report)
+        self.assertNotIn(previous_sha, report)
+        self.assertFalse((pipeline.root / "report.md").exists())
+
+    def test_initialization_failure_falls_back_for_outside_report_path(self) -> None:
+        config = self.base_config()
+        task = self.base_task()
+        self.enable_polyhedron(config, task)
+        pipeline = self.load(config, task)
+        previous_package, previous_sha = self.write_previous_polyhedron_artifacts(
+            pipeline
+        )
+
+        with tempfile.TemporaryDirectory() as outside_directory:
+            outside_report = Path(outside_directory) / "outside-report.md"
+            outside_report.write_text("outside sentinel\n", encoding="utf-8")
+            config["report_path"] = str(outside_report)
+            pipeline.config_path.write_text(
+                json.dumps(config, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+
+            exit_code, _, stderr = self.run_real_cli(
+                pipeline.config_path, "package"
+            )
+
+            self.assertEqual(
+                outside_report.read_text(encoding="utf-8"),
+                "outside sentinel\n",
+            )
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("must stay under", stderr)
+        self.assertEqual(
+            pipeline.polyhedron_package_path.read_bytes(), previous_package
+        )
+        report = (pipeline.root / "report.md").read_text(encoding="utf-8")
+        self.assertIn("Decision: **no_go**", report)
+        self.assertIn(
+            "Polyhedron package status: `initialization_failed`", report
+        )
+        self.assertIn("not updated by this run", report)
+        self.assertIn("previous run", report)
+        self.assertIn("must stay under", report)
         self.assertNotIn(previous_sha, report)
 
     def test_upstream_gate_failure_marks_old_zip_as_stale_in_new_report(self) -> None:
@@ -866,6 +1004,36 @@ class PipelineConfigTests(unittest.TestCase):
         task["technical_facts"]["judge_mode"]["value"] = "custom-checker"
         with self.assertRaisesRegex(PipelineError, "standard batch"):
             self.load(config=config, task=task)
+
+    def test_polyhedron_package_requires_matching_supported_batch_mode(self) -> None:
+        invalid_modes = [
+            ("batch-custom-checker", "tokens", "standard batch"),
+            ("batch-Tokens", "tokens", "standard batch"),
+            ("batch-tokens", "exact", "mismatch"),
+        ]
+        for judge_mode, compare_mode, error in invalid_modes:
+            with self.subTest(judge_mode=judge_mode, compare_mode=compare_mode):
+                config = self.base_config()
+                task = self.base_task()
+                self.enable_polyhedron(config, task)
+                config["output_compare"] = compare_mode
+                task["technical_facts"]["judge_mode"]["value"] = judge_mode
+                with self.assertRaisesRegex(PipelineError, error):
+                    self.load(config=config, task=task)
+
+        valid_modes = [
+            ("batch-tokens", "tokens"),
+            ("batch-exact", "exact"),
+        ]
+        for judge_mode, compare_mode in valid_modes:
+            with self.subTest(judge_mode=judge_mode, compare_mode=compare_mode):
+                config = self.base_config()
+                task = self.base_task()
+                self.enable_polyhedron(config, task)
+                config["output_compare"] = compare_mode
+                task["technical_facts"]["judge_mode"]["value"] = judge_mode
+                pipeline = self.load(config=config, task=task)
+                self.assertTrue(pipeline.polyhedron_package_enabled)
 
 
 if __name__ == "__main__":
