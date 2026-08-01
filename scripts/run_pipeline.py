@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+from package_polyhedron import PackageError, build_polyhedron_zip
+
 
 class PipelineError(RuntimeError):
     pass
@@ -1285,6 +1287,30 @@ class Pipeline:
             errors.append(f"{name} scored {score:g}, above maximum {float(expect['score_max']):g}")
         return errors
 
+    def package_polyhedron(self) -> dict[str, Any]:
+        if not self.polyhedron_package_enabled:
+            raise PipelineError("Polyhedron package is not enabled")
+        if self.gate_errors:
+            raise PipelineError("Polyhedron package blocked by upstream gate failures")
+        self.write_testdata_config(check_only=True)
+        try:
+            metadata = build_polyhedron_zip(
+                root=self.root,
+                output_path=self.polyhedron_package_path,
+                statement_path=self.root / "statement.md",
+                standard_solution_path=self.source_path(
+                    str(self.config["sources"]["oracle"])
+                ),
+                data_dir=self.data_dir,
+                case_ids=self.case_ids,
+                scoring_units=self.scoring_units,
+                memory_limit_mib=self.memory_limit_mib,
+            )
+        except PackageError as exc:
+            raise PipelineError(f"Polyhedron package failed: {exc}") from exc
+        self.polyhedron_package_metadata = metadata
+        return metadata
+
     def write_report(self, verdicts: dict[str, Any] | None, completed_gate: str) -> None:
         decision = "no_go" if self.gate_errors else "go"
         lines = [
@@ -1301,6 +1327,15 @@ class Pipeline:
             + str(self.testdata_config_path.relative_to(self.root)).replace("\\", "/")
             + "`",
         ]
+        if self.polyhedron_package_metadata is not None:
+            lines.extend(
+                [
+                    "- Polyhedron package: `polyhedron.zip`",
+                    "- Polyhedron package SHA-256: `"
+                    + str(self.polyhedron_package_metadata["sha256"])
+                    + "`",
+                ]
+            )
         if self.environment:
             lines.extend(
                 [
@@ -1383,7 +1418,7 @@ def main() -> int:
     parser.add_argument("config", type=Path, help="pipeline JSON configuration")
     parser.add_argument(
         "stage",
-        choices=("build", "config", "generate", "evaluate", "all"),
+        choices=("build", "config", "generate", "evaluate", "package", "all"),
         nargs="?",
         default="all",
     )
@@ -1405,11 +1440,21 @@ def main() -> int:
             pipeline.build(include_solutions=True)
             verdicts = pipeline.evaluate()
             pipeline.write_report(verdicts, "candidate-evaluation")
-        else:
+        elif args.stage in {"package", "all"}:
             pipeline.build(include_solutions=True)
             pipeline.generate()
             verdicts = pipeline.evaluate()
-            pipeline.write_report(verdicts, "build-generation-evaluation")
+            should_package = (
+                args.stage == "package" or pipeline.polyhedron_package_enabled
+            )
+            if not pipeline.gate_errors and should_package:
+                pipeline.package_polyhedron()
+            completed_gate = (
+                "build-generation-evaluation-package"
+                if pipeline.polyhedron_package_metadata is not None
+                else "build-generation-evaluation"
+            )
+            pipeline.write_report(verdicts, completed_gate)
         if pipeline.gate_errors:
             print(f"pipeline completed with {len(pipeline.gate_errors)} failed gate(s)", file=sys.stderr)
             return 2

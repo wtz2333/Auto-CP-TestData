@@ -5,16 +5,20 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import io
 import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("run_pipeline.py")
 SKILL_ROOT = MODULE_PATH.parent.parent
+if str(MODULE_PATH.parent) not in sys.path:
+    sys.path.insert(0, str(MODULE_PATH.parent))
 SPEC = importlib.util.spec_from_file_location("build_cp_run_pipeline", MODULE_PATH)
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError("cannot load run_pipeline.py")
@@ -23,6 +27,48 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 Pipeline = MODULE.Pipeline
 PipelineError = MODULE.PipelineError
+
+
+class CliPipelineFixture:
+    def __init__(
+        self,
+        *,
+        enabled: bool,
+        gate_errors: list[str] | None = None,
+        package_error: str | None = None,
+    ) -> None:
+        self.polyhedron_package_enabled = enabled
+        self.polyhedron_package_metadata: dict[str, Any] | None = None
+        self.gate_errors = list(gate_errors or [])
+        self.package_error = package_error
+        self.report_path = Path("report.md")
+        self.calls: list[Any] = []
+
+    def build(self, *, include_solutions: bool) -> None:
+        self.calls.append(("build", include_solutions))
+
+    def generate(self) -> None:
+        self.calls.append("generate")
+
+    def evaluate(self) -> dict[str, Any]:
+        self.calls.append("evaluate")
+        return {"decision": "go"}
+
+    def package_polyhedron(self) -> dict[str, Any]:
+        self.calls.append("package")
+        if self.package_error is not None:
+            raise PipelineError(self.package_error)
+        self.polyhedron_package_metadata = {
+            "path": "polyhedron.zip",
+            "sha256": "a" * 64,
+            "members": [],
+        }
+        return self.polyhedron_package_metadata
+
+    def write_report(
+        self, verdicts: dict[str, Any] | None, completed_gate: str
+    ) -> None:
+        self.calls.append(("report", completed_gate, verdicts))
 
 
 class PipelineConfigTests(unittest.TestCase):
@@ -190,6 +236,39 @@ class PipelineConfigTests(unittest.TestCase):
         return Pipeline(config_path)
 
     @staticmethod
+    def enable_polyhedron(config: dict[str, Any], task: dict[str, Any]) -> None:
+        config["polyhedron_package"]["enabled"] = True
+        task["intake"]["preferences"]["polyhedron_zip"]["value"] = True
+
+    def write_packaging_artifacts(self, pipeline: Any) -> None:
+        (pipeline.root / "statement.md").write_text(
+            "# Packaging fixture\n\nProblem statement.\n", encoding="utf-8"
+        )
+        oracle_path = pipeline.source_path(str(pipeline.config["sources"]["oracle"]))
+        self.assertTrue(oracle_path.is_file())
+        pipeline.data_dir.mkdir(parents=True, exist_ok=True)
+        for case_id in pipeline.case_ids:
+            (pipeline.data_dir / f"{case_id}.in").write_bytes(b"input\n")
+            (pipeline.data_dir / f"{case_id}.ans").write_bytes(b"answer\n")
+        pipeline.write_testdata_config()
+
+    def run_cli(
+        self, pipeline: CliPipelineFixture, stage: str
+    ) -> tuple[int, str, str]:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with (
+            mock.patch.object(MODULE, "Pipeline", return_value=pipeline),
+            mock.patch.object(
+                sys, "argv", ["run_pipeline.py", "pipeline.json", stage]
+            ),
+            mock.patch.object(sys, "stdout", stdout),
+            mock.patch.object(sys, "stderr", stderr),
+        ):
+            exit_code = MODULE.main()
+        return exit_code, stdout.getvalue(), stderr.getvalue()
+
+    @staticmethod
     def row(*accepted: str) -> dict[str, dict[str, Any]]:
         accepted_set = set(accepted)
         return {
@@ -232,6 +311,136 @@ class PipelineConfigTests(unittest.TestCase):
         pipeline = self.load(config, task)
         self.assertEqual(pipeline.scoring_mode, "mixed")
         self.assertEqual(pipeline.total_points, 100)
+
+    def test_polyhedron_package_is_built_and_reported_after_acceptance(self) -> None:
+        config = self.base_config()
+        task = self.base_task()
+        self.enable_polyhedron(config, task)
+        pipeline = self.load(config, task)
+        self.write_packaging_artifacts(pipeline)
+
+        metadata = pipeline.package_polyhedron()
+
+        self.assertEqual(metadata["path"], "polyhedron.zip")
+        self.assertEqual(
+            metadata["sha256"], MODULE.sha256_file(pipeline.polyhedron_package_path)
+        )
+        self.assertIn("polyhedron-export/problem.yaml", metadata["members"])
+        pipeline.write_report(None, "polyhedron-package")
+        report = pipeline.report_path.read_text(encoding="utf-8")
+        self.assertIn("Polyhedron package: `polyhedron.zip`", report)
+        self.assertIn(metadata["sha256"], report)
+
+    def test_polyhedron_package_does_not_overwrite_after_upstream_gate_failure(self) -> None:
+        config = self.base_config()
+        task = self.base_task()
+        self.enable_polyhedron(config, task)
+        pipeline = self.load(config, task)
+        self.write_packaging_artifacts(pipeline)
+        pipeline.gate_errors.append("candidate acceptance failed")
+
+        with self.assertRaisesRegex(PipelineError, "upstream gate"):
+            pipeline.package_polyhedron()
+        self.assertFalse(pipeline.polyhedron_package_path.exists())
+
+        pipeline.polyhedron_package_path.write_bytes(b"existing package")
+        with self.assertRaisesRegex(PipelineError, "upstream gate"):
+            pipeline.package_polyhedron()
+        self.assertEqual(
+            pipeline.polyhedron_package_path.read_bytes(), b"existing package"
+        )
+
+    def test_polyhedron_package_rejects_direct_call_when_not_enabled(self) -> None:
+        pipeline = self.load()
+        self.write_packaging_artifacts(pipeline)
+
+        with self.assertRaisesRegex(PipelineError, "not enabled"):
+            pipeline.package_polyhedron()
+
+        self.assertFalse(pipeline.polyhedron_package_path.exists())
+
+    def test_polyhedron_packager_failure_is_wrapped_as_pipeline_error(self) -> None:
+        config = self.base_config()
+        task = self.base_task()
+        self.enable_polyhedron(config, task)
+        pipeline = self.load(config, task)
+        self.write_packaging_artifacts(pipeline)
+        (pipeline.root / "statement.md").unlink()
+
+        with self.assertRaisesRegex(
+            PipelineError, r"^Polyhedron package failed:.*statement"
+        ):
+            pipeline.package_polyhedron()
+
+    def test_all_cli_packages_after_successful_evaluation_when_enabled(self) -> None:
+        pipeline = CliPipelineFixture(enabled=True)
+
+        exit_code, _, _ = self.run_cli(pipeline, "all")
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            pipeline.calls,
+            [
+                ("build", True),
+                "generate",
+                "evaluate",
+                "package",
+                (
+                    "report",
+                    "build-generation-evaluation-package",
+                    {"decision": "go"},
+                ),
+            ],
+        )
+
+    def test_all_cli_skips_packaging_when_disabled(self) -> None:
+        pipeline = CliPipelineFixture(enabled=False)
+
+        exit_code, _, _ = self.run_cli(pipeline, "all")
+
+        self.assertEqual(exit_code, 0)
+        self.assertNotIn("package", pipeline.calls)
+        self.assertIn(
+            (
+                "report",
+                "build-generation-evaluation",
+                {"decision": "go"},
+            ),
+            pipeline.calls,
+        )
+
+    def test_package_cli_fails_clearly_when_packaging_is_disabled(self) -> None:
+        pipeline = CliPipelineFixture(
+            enabled=False, package_error="Polyhedron package is not enabled"
+        )
+
+        exit_code, _, stderr = self.run_cli(pipeline, "package")
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(
+            pipeline.calls,
+            [("build", True), "generate", "evaluate", "package"],
+        )
+        self.assertIn("not enabled", stderr)
+
+    def test_package_cli_does_not_package_when_evaluation_has_gate_errors(self) -> None:
+        pipeline = CliPipelineFixture(
+            enabled=True, gate_errors=["candidate acceptance failed"]
+        )
+
+        exit_code, _, stderr = self.run_cli(pipeline, "package")
+
+        self.assertEqual(exit_code, 2)
+        self.assertNotIn("package", pipeline.calls)
+        self.assertIn(
+            (
+                "report",
+                "build-generation-evaluation",
+                {"decision": "go"},
+            ),
+            pipeline.calls,
+        )
+        self.assertIn("1 failed gate", stderr)
 
     def test_testdata_config_is_derived_from_scoring_units(self) -> None:
         pipeline = self.load()
