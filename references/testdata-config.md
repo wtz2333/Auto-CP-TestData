@@ -18,6 +18,11 @@ Use `pipeline.json` as the only source:
 - Write `memory: <memory_limit_mib>MB` on every generated subtask.
 - Copy every unit member to `input: NNN.in` and `output: NNN.ans`, preserving
   the declared member order.
+- Preserve the judge-facing field order exactly as
+  `memory`, `score`, `if`, `id`, `type`, `cases`; under `cases`, write
+  `input` before `output`. Keep the top-level order as `type`, then `subtasks`.
+- Render the full expanded YAML. Do not use YAML anchors, aliases, merge keys,
+  inline case objects, or omitted empty dependency lists.
 
 Do not copy scores, case ranges, memory, dependency lists, or zero-score
 subtasks from an example. Do not synthesize an unscored final case. A
@@ -56,7 +61,9 @@ Before release, require all of the following:
 5. The file is UTF-8 without a BOM, uses LF line endings, and ends with one
    newline.
 6. `manifest.json` records the generated config path, hash, and unit mapping.
-7. The release allowlist and archive include `data/config.yaml`.
+7. The delivered directory includes `data/config.yaml`. If and only if
+   `archive_policy` is `user-requested` or `platform-required`, the release
+   allowlist and archive also include it.
 
 For interactive, output-only, multiple-answer, or custom-scored tasks, adapt
 the runner and freeze the platform-specific mapping before generating this

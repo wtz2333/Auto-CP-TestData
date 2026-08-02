@@ -24,7 +24,7 @@
   "time_limit_multiplier": 3,
   "time_limit_min_seconds": 1,
   "time_limit_max_seconds": 5,
-  "text_files": [],
+  "text_files": ["statement.md"],
   "scoring": {
     "mode": "mixed",
     "total_points": 100,

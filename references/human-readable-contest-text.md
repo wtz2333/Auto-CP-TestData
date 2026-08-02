@@ -35,6 +35,8 @@ The goal is clear, natural technical Chinese. It is not to evade detection, imit
 - Pair every nontrivial formula with its role in the algorithm. Do not translate a formula word for word after it is already clear.
 - Give proof at the first point where correctness becomes non-obvious. Routine implementation steps do not need theorem-like packaging.
 - For partial solutions, explain why each method fits its range and where it stops. Avoid repeating the full problem statement for every subtask.
+- Do not turn implementation-only scoring boundaries, such as excessive constants, recursion depth, array bounds, missing reset, or overflow, into artificial partial algorithms.
+- Do not add standalone correctness or complexity sections when a local sentence already settles the point. Reserve them for genuinely difficult proofs or bounds.
 - End after the final necessary implementation or complexity point. Do not add a ceremonial summary, encouragement, or claim about how “elegant” the solution is.
 
 ## What not to import

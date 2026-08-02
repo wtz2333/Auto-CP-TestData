@@ -31,6 +31,27 @@ class PipelineConfigTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         for name in ("gen.cpp", "valid.cpp", "std.cpp"):
             (self.root / name).write_text("// validation fixture\n", encoding="utf-8")
+        (self.root / "statement.md").write_text(
+            "# 示例题\n\n"
+            "## 题目描述\n\n"
+            "给定一个整数，原样输出。\n\n"
+            "## 输入格式\n\n"
+            "输入一个整数。\n\n"
+            "## 输出格式\n\n"
+            "输出该整数。\n\n"
+            "## 样例\n\n"
+            "### 样例 1 输入\n\n"
+            "```text\n"
+            "1\n"
+            "```\n\n"
+            "### 样例 1 输出\n\n"
+            "```text\n"
+            "1\n"
+            "```\n\n"
+            "## 数据范围\n\n"
+            "对于所有数据，输入为整数。\n",
+            encoding="utf-8",
+        )
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -64,6 +85,10 @@ class PipelineConfigTests(unittest.TestCase):
                             "theme": None,
                             "required_elements": [],
                             "forbidden_elements": [],
+                            "protagonist_aliases": {
+                                "enabled": True,
+                                "names": ["小 W", "小 Z"],
+                            },
                         },
                         "source": "user",
                     },
@@ -75,6 +100,14 @@ class PipelineConfigTests(unittest.TestCase):
                     "package_format": {
                         "value": "luogu-markdown",
                         "source": "user",
+                    },
+                    "archive_policy": {
+                        "value": "none",
+                        "source": "delegated",
+                        "decision_note": (
+                            "No user or platform archive requirement; "
+                            "directory delivery is the default."
+                        ),
                     },
                 },
             },
@@ -131,6 +164,7 @@ class PipelineConfigTests(unittest.TestCase):
             "memory_limit_mib": 512,
             "time_limit_ms": 2000,
             "output_compare": "tokens",
+            "text_files": ["statement.md"],
             "testdata_config": {"path": "data/config.yaml"},
             "cxxflags": ["-std=c++14", "-O2"],
             "sources": {
@@ -219,6 +253,47 @@ class PipelineConfigTests(unittest.TestCase):
         pipeline = self.load(config, task)
         self.assertEqual(pipeline.scoring_mode, "mixed")
         self.assertEqual(pipeline.total_points, 100)
+
+    def test_filled_statement_template_passes(self) -> None:
+        self.load().check_statement_template()
+
+    def test_statement_render_directive_is_rejected(self) -> None:
+        statement_path = self.root / "statement.md"
+        statement_path.write_text(
+            statement_path.read_text(encoding="utf-8").replace(
+                "```text\n1\n```",
+                "{{ sample.text(1) }}",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(PipelineError, "render directive"):
+            self.load().check_statement_template()
+
+    def test_unfilled_statement_marker_is_rejected(self) -> None:
+        statement_path = self.root / "statement.md"
+        statement_path.write_text(
+            statement_path.read_text(encoding="utf-8").replace(
+                "给定一个整数，原样输出。",
+                "【填写：题目描述】",
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(PipelineError, "unfilled marker"):
+            self.load().check_statement_template()
+
+    def test_statement_requires_direct_sample_fences(self) -> None:
+        statement_path = self.root / "statement.md"
+        statement_path.write_text(
+            statement_path.read_text(encoding="utf-8").replace(
+                "```text\n1\n```",
+                "样例内容见 examples/ex1.in。",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(PipelineError, "direct fenced text block"):
+            self.load().check_statement_template()
 
     def test_testdata_config_is_derived_from_scoring_units(self) -> None:
         pipeline = self.load()
@@ -309,6 +384,26 @@ class PipelineConfigTests(unittest.TestCase):
         task = self.base_task()
         del task["intake"]["preferences"]["statement_style"]
         with self.assertRaisesRegex(PipelineError, "unresolved preferences"):
+            self.load(task=task)
+
+    def test_missing_archive_policy_is_rejected(self) -> None:
+        task = self.base_task()
+        del task["intake"]["preferences"]["archive_policy"]
+        with self.assertRaisesRegex(PipelineError, "unresolved preferences"):
+            self.load(task=task)
+
+    def test_archive_deliverable_conflicts_with_default_none_policy(self) -> None:
+        task = self.base_task()
+        task["intake"]["preferences"]["deliverables"]["value"].append("zip")
+        with self.assertRaisesRegex(PipelineError, "conflicts"):
+            self.load(task=task)
+
+    def test_missing_protagonist_alias_setting_is_rejected(self) -> None:
+        task = self.base_task()
+        del task["intake"]["preferences"]["statement_style"]["value"][
+            "protagonist_aliases"
+        ]
+        with self.assertRaisesRegex(PipelineError, "protagonist_aliases"):
             self.load(task=task)
 
     def test_delegation_without_reason_is_rejected(self) -> None:

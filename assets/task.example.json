@@ -43,7 +43,14 @@
           "mode": "light-context",
           "theme": null,
           "required_elements": [],
-          "forbidden_elements": []
+          "forbidden_elements": [],
+          "protagonist_aliases": {
+            "enabled": true,
+            "names": [
+              "小 W",
+              "小 Z"
+            ]
+          }
         },
         "source": "delegated",
         "decision_note": "A short neutral setup fits the formal graph problem."
@@ -59,6 +66,11 @@
       "package_format": {
         "value": "luogu-markdown",
         "source": "user"
+      },
+      "archive_policy": {
+        "value": "none",
+        "source": "delegated",
+        "decision_note": "No user or platform archive requirement; complete directory delivery is the Skill default."
       }
     },
     "clarification_log": [

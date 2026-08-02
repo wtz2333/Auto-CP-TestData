@@ -33,6 +33,8 @@ Use the concrete statement style frozen in the task contract:
 
 If the user selected “adaptive”, resolve it to one of these concrete modes under `source: delegated` before drafting. For a themed statement, freeze the theme, required and forbidden elements, title preference, generic-name policy, and whether theme terms may replace mathematical object names.
 
+Freeze `statement_style.protagonist_aliases` at the same time. The default is enabled with the two aliases `小 W` and `小 Z`; the questionnaire may disable them or replace them with distinct custom names. Use enabled aliases naturally in a light or themed background when the task already benefits from actors. Do not add characters merely to satisfy the setting in an otherwise formal statement.
+
 Remove or fully replace the original background. Change names, exposition, field order, or equivalent representation only within the frozen rewrite scope and when clarity improves. Preserve the state space, feasibility conditions, objective, answer semantics, and indispensable full-score algorithm. Record every material change internally.
 
 ## Natural object vocabulary
@@ -74,7 +76,9 @@ Under the supplied NOIP convention, use exactly 20 equal five-point formal cases
 
 Never reuse an original mathematical instance through renaming, reordering, whitespace, or equivalent encoding. Validate every new sample input and cross-check its answer with the frozen oracle and an independent calculation.
 
-Under the supplied NOIP convention, provide at least three samples: simple, medium, and one whose principal size parameter reaches the formal maximum. Add a sample for each boundary that distinguishes two reasonable interpretations. Keep sample files in `examples/`. Display sample 1 fully; display another only when its nonempty input and answer lines total at most 20, otherwise reference the distributed filename.
+Under the supplied NOIP convention, provide at least three samples: simple, medium, and one whose principal size parameter reaches the formal maximum. Add a sample for each boundary that distinguishes two reasonable interpretations. Keep sample files in `examples/`. Display sample 1 fully in explicit `### 样例 1 输入` and `### 样例 1 输出` sections with fenced `text` blocks; display another in the same direct form only when its nonempty input and answer lines total at most 20, otherwise reference the distributed filename in ordinary Markdown.
+
+Do not use a renderer command to stand in for sample content. The delivered Markdown must not contain `{{ sample.text(...) }}`, `{{ sample.file(...) }}`, another `{{ ... }}` expression, or a platform-only sample include directive. The sample text visible to contestants must already be present in `statement.md`.
 
 Use a sample explanation only when it clarifies the input/output process or a likely interpretation boundary. Do not reveal the central lemma, optimization, recurrence, or standard algorithm merely to make the explanation look complete.
 
@@ -98,8 +102,10 @@ Reject the draft until every such issue is removed or justified by a concrete am
 
 ## Render and freeze
 
+Start from the exact section skeleton in [the strict statement template](../assets/statement-template-strict.md). Replace every `【填写...】` marker, delete every inapplicable `【按需...】` section, and deliver the result as standalone Markdown. Never deliver the template itself as the statement.
+
 Write `statement.md` in the selected platform's Markdown dialect and follow every rule in Shared typography and Shared Markdown syntax in [luogu-text-format.md](luogu-text-format.md). For statements, use the supported `text` info string for sample input and output, and reserve backticks for filenames, literal output, and identifiers that contestants must copy exactly.
 
 Apply the shared delimiter, fence, link, table, escaping, filename, and render checks without omission. If a PDF is produced, verify it opens and inspect every page for garbling, formula or table errors, bad page breaks, overflow, and wrong sample references.
 
-Freeze only when the change record is complete, semantic and natural-prose reviews pass, samples validate and cross-check, and the statement, validator, and oracle share one interpretation.
+Freeze only when the change record is complete, semantic and natural-prose reviews pass, samples validate and cross-check, the statement contains no fill marker or render directive, and the statement, validator, and oracle share one interpretation.

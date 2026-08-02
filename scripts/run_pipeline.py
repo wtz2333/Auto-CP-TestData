@@ -217,6 +217,12 @@ class Pipeline:
         text_files = self.config.get("text_files", [])
         if not isinstance(text_files, list) or not all(isinstance(value, str) for value in text_files):
             raise PipelineError("text_files must be a list of paths")
+        statement_files = [
+            value for value in text_files if Path(value).name.lower() == "statement.md"
+        ]
+        if len(statement_files) != 1:
+            raise PipelineError("text_files must include exactly one statement.md")
+        self.statement_path = self.source_path(statement_files[0])
         if self.config.get("calibrate_time_limit", False):
             runs = self.config.get("benchmark_runs", 3)
             if not isinstance(runs, int) or runs < 3:
@@ -409,6 +415,7 @@ class Pipeline:
             "rewrite_scope",
             "target_audience",
             "package_format",
+            "archive_policy",
         }
         missing = sorted(required - set(preferences))
         if missing:
@@ -487,6 +494,20 @@ class Pipeline:
             or len(set(deliverables)) != len(deliverables)
         ):
             raise PipelineError("preference deliverables must be unique nonempty strings")
+        archive_policy = values["archive_policy"]
+        if archive_policy not in {"none", "user-requested", "platform-required"}:
+            raise PipelineError("preference archive_policy is invalid")
+        archive_deliverables = {
+            str(value).strip().lower()
+            for value in deliverables
+            if str(value).strip().lower() in {"archive", "zip"}
+        }
+        if archive_policy == "none" and archive_deliverables:
+            raise PipelineError(
+                "archive_policy none conflicts with an archive or zip deliverable"
+            )
+        if archive_policy == "user-requested" and preferences["archive_policy"]["source"] != "user":
+            raise PipelineError("user-requested archive_policy must be supplied by the user")
 
         if values["scoring_mode"] not in {"per_case", "bundled", "mixed"}:
             raise PipelineError("preference scoring_mode is invalid")
@@ -533,6 +554,29 @@ class Pipeline:
                 isinstance(value, str) and value.strip() for value in elements
             ):
                 raise PipelineError(f"statement_style {field} must be a list of strings")
+        protagonist_aliases = style.get("protagonist_aliases")
+        if not isinstance(protagonist_aliases, dict):
+            raise PipelineError("statement_style protagonist_aliases must be an object")
+        aliases_enabled = protagonist_aliases.get("enabled")
+        aliases = protagonist_aliases.get("names")
+        if not isinstance(aliases_enabled, bool):
+            raise PipelineError("statement_style protagonist_aliases enabled must be boolean")
+        if (
+            not isinstance(aliases, list)
+            or not all(isinstance(value, str) and value.strip() for value in aliases)
+            or len(set(aliases)) != len(aliases)
+        ):
+            raise PipelineError(
+                "statement_style protagonist_aliases names must be distinct nonempty strings"
+            )
+        if aliases_enabled and not aliases:
+            raise PipelineError(
+                "enabled statement_style protagonist_aliases needs at least one name"
+            )
+        if not aliases_enabled and aliases:
+            raise PipelineError(
+                "disabled statement_style protagonist_aliases must use an empty names list"
+            )
         if style["mode"] == "themed":
             if not isinstance(style.get("title_preference"), str) or not style[
                 "title_preference"
@@ -879,6 +923,71 @@ class Pipeline:
             if b"\r" in path.read_bytes():
                 self.gate_errors.append(f"text file is not LF-only: {path}")
 
+    def check_statement_template(self) -> None:
+        path = self.statement_path
+        if not path.is_file():
+            raise PipelineError(f"configured statement is missing: {path}")
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise PipelineError(f"statement is not valid UTF-8: {path}") from exc
+
+        forbidden_fragments = (
+            "{{",
+            "}}",
+            "sample.text",
+            "sample.file",
+            "【填写",
+            "【按需",
+            "TODO",
+        )
+        found = [fragment for fragment in forbidden_fragments if fragment in text]
+        if found:
+            raise PipelineError(
+                "statement contains an unfilled marker or render directive: "
+                + ", ".join(found)
+            )
+
+        lines = text.splitlines()
+        first_nonempty = next((line for line in lines if line.strip()), "")
+        if not re.fullmatch(r"#\s+\S.*", first_nonempty):
+            raise PipelineError("statement must start with a filled level-1 title")
+
+        required_headings = (
+            "## 题目描述",
+            "## 输入格式",
+            "## 输出格式",
+            "## 样例",
+            "## 数据范围",
+        )
+        for heading in required_headings:
+            if lines.count(heading) != 1:
+                raise PipelineError(
+                    f"statement must contain exactly one required heading: {heading}"
+                )
+
+        input_headings = re.findall(r"(?m)^### 样例 ([1-9][0-9]*) 输入\s*$", text)
+        output_headings = re.findall(r"(?m)^### 样例 ([1-9][0-9]*) 输出\s*$", text)
+        if not input_headings or "1" not in input_headings:
+            raise PipelineError("statement must directly include sample 1 input")
+        if input_headings != output_headings:
+            raise PipelineError("statement sample input/output headings do not match")
+
+        direct_inputs = re.findall(
+            r"(?m)^### 样例 ([1-9][0-9]*) 输入\s*\n(?:\s*\n)?```text\s*$",
+            text,
+        )
+        direct_outputs = re.findall(
+            r"(?m)^### 样例 ([1-9][0-9]*) 输出\s*\n(?:\s*\n)?```text\s*$",
+            text,
+        )
+        if direct_inputs != input_headings or direct_outputs != output_headings:
+            raise PipelineError(
+                "every displayed sample input and output must use a direct fenced text block"
+            )
+        if text.count("```") % 2:
+            raise PipelineError("statement has unbalanced fenced code blocks")
+
     def record_environment(self) -> None:
         compiler = str(self.config.get("compiler", "g++"))
         flags = [str(flag) for flag in self.config.get("cxxflags", ["-std=c++14", "-O2", "-Wall", "-Wextra"])]
@@ -894,6 +1003,7 @@ class Pipeline:
         }
 
     def build(self, include_solutions: bool) -> None:
+        self.check_statement_template()
         self.check_lf_files()
         self.record_environment()
         sources = self.config["sources"]

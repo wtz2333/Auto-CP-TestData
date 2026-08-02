@@ -18,6 +18,7 @@ The following fields must be resolved by the user or by explicit user delegation
 | `rewrite_scope` | `narrative-only`, `constraints-and-subtasks`, or `equivalent-interface` |
 | `target_audience` | Named contest level or a concrete description of expected contestants |
 | `package_format` | `luogu-markdown`, `tuack-noi`, `plain-directory`, or a named custom format |
+| `archive_policy` | `none` by default; `user-requested` or `platform-required` only with a recorded reason |
 
 Accept “you decide” for any preference except the original-problem path. Treat it as explicit delegation, choose a concrete value, record `source: delegated`, and write a short `decision_note`. For the output directory, delegation is valid only after the user supplies the parent directory; choose the rewritten title first, use that exact title as the folder name, and store the resolved absolute output path. Do not store a vague “adaptive” value: use the concrete bounded policy below.
 
@@ -29,6 +30,12 @@ Accept “you decide” for any preference except the original-problem path. Tre
 - “adaptive” is a questionnaire response, not a final stored mode. It authorizes choosing one of the three concrete modes.
 
 For `themed`, also resolve the theme or characters, required and forbidden elements, title preference, whether generic names such as 小明 or 小红 are allowed, and whether theme terms may replace mathematical object names throughout the statement. If these details are omitted, ask; do not invent a specific franchise, person, or setting.
+
+Store `statement_style.value.protagonist_aliases` as an object with `enabled` and `names`. Questionnaire option 10A resolves to `{"enabled":true,"names":["小 W","小 Z"]}`; option 10B resolves to `{"enabled":false,"names":[]}`; option 10C stores the supplied nonempty, distinct names. Enabled aliases are available narrative names, not a requirement to add an artificial actor paragraph to a formal statement.
+
+## Archive policy
+
+A complete problem package means a complete directory unless the user or target platform explicitly requires an archive. If neither does, store `archive_policy.value` as `none`, use `source: delegated`, record that this is the Skill default, and do not create a ZIP. If the user explicitly requests an archive, store `user-requested` with `source: user`. If the platform contract requires one, store `platform-required` and cite the platform evidence in `decision_note`. Do not infer that “完整题包”, “Tuack / NOI”, or a request for all deliverables implies ZIP packaging.
 
 ## Scoring choices
 
@@ -76,4 +83,4 @@ After read-only inventory, use [the fixed intake questionnaire](../assets/intake
 
 Do not begin mutating work while any required preference has `source: unresolved`. If the user changes an accepted preference later, reopen every affected gate.
 
-The fixed template includes output location, delivery scope, scoring and count policy, grouping authority, statement style, rewrite scope, audience, package format, technical limits, and conditional custom details. Ask a second round only when the reply is contradictory or omits a value explicitly required by the selected option. For `per_case` and `mixed`, an exact count remains mandatory; for `bundled`, the fixed bounded policy is allowed.
+The fixed template includes output location, delivery scope, scoring and count policy, grouping authority, statement style, rewrite scope, audience, package format, technical limits, protagonist aliases, and conditional custom details. Ask a second round only when the reply is contradictory or omits a value explicitly required by the selected option. For `per_case` and `mixed`, an exact count remains mandatory; for `bundled`, the fixed bounded policy is allowed. Resolve the archive policy from explicit user/platform requirements and otherwise store the fixed `none` default without an additional question.

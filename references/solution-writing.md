@@ -4,34 +4,43 @@ Follow the textual and formatting requirements of the [Luogu solution standard](
 
 Read [luogu-text-format.md](luogu-text-format.md) and [human-readable-contest-text.md](human-readable-contest-text.md) before drafting or reviewing. The editorial inherits every Markdown syntax, mathematics, typography, and render requirement used for the statement unless this reference gives a stricter editorial-specific rule.
 
-## Required structure
+## Default structure
 
-Write one coherent Markdown editorial. Use this order unless the problem needs a clearer local variation:
+Write one coherent Markdown editorial. Unless the user requests another structure, use this order:
 
-1. `直观理解`: explain the central obstacle and observation in ordinary language.
-2. `部分分`: cover brute force and every distinct partial-score algorithm from simpler to stronger.
-3. `标准解法`: derive the full algorithm rather than announcing it abruptly.
-4. `正确性证明`: prove the important invariant, transition, exchange, or equivalence.
-5. `复杂度分析`: give time and space complexity with defined parameters.
-6. `实现细节`: connect mathematical objects to states, arrays, structures, operations, and boundaries.
-7. `参考代码`: include the readable primary implementation or its verified delivery copy.
+1. `简化题意`: retain only the objects, operation, and required answer needed to understand the solution.
+2. `子任务` or `部分分`: follow the statement order and explain only genuine algorithmic differences.
+3. `完整做法`: derive the full algorithm and its core states, formulas, or data structures.
+4. `实现细节`: include only boundaries that materially affect a correct implementation.
+5. `参考代码`: include the readable primary implementation or its verified delivery copy.
 
-Merge sections only when the result is genuinely easier to read; never omit required substance.
+Do not add a generic `直观理解` section when `简化题意` and the first algorithmic observation already cover it. Correctness and complexity are optional sections governed by the rules below, not mandatory headings.
 
 ## Every partial score
 
-Cover every subtask-table row. If several rows use the same algorithm, explain that algorithm once and list all covered rows. For each distinct method, state:
+Follow every subtask-table row in order, but distinguish a scoring row from an algorithm. If several rows use the same algorithm, explain that algorithm once and briefly point the other rows to it. For each genuine partial method, state only what is useful:
 
 - Applicable test points, constraints, or special property and obtainable score.
 - Core observation and exact procedure.
-- Why it is correct, with proof depth proportional to the claim.
-- Time and space complexity.
+- A short correctness justification only when the method contains a non-obvious step.
+- A one-sentence time or space bound when it helps explain why the method fits the constraint.
 - Why it cannot handle the next range, when relevant.
 - Important implementation boundaries.
+
+Do not invent a partial solution for a subtask or score level whose only purpose is to catch a correct solution written incorrectly or implemented inefficiently. Examples include excessive constants, deep recursion, insufficient array sizes, missing multi-test reset, overflow, and a small local omission in the full solution. Such a row may receive a short implementation note or simply point to the complete method; it does not need its own algorithm exposition.
 
 Ensure these claims match the tested partial programs and measured score matrix. Do not describe an intended score that the formal data does not enforce.
 
 Use the same scoring units as the statement, manifest, pipeline, and verdict report. For bundled scoring, say that the unit's points require every member case and dependency unit; do not present a partially passed bundle as earned credit. For mixed scoring, distinguish independently awarded points from all-or-nothing bundles.
+
+## Proof and complexity restraint
+
+Do not create standalone correctness and complexity sections by default.
+
+- Give a separate proof only when correctness depends on a genuine conceptual step: a greedy exchange, maintained invariant, complete DP transition, unique decomposition, transformed-problem equivalence, or similarly non-obvious claim.
+- For enumeration, direct simulation, straightforward recurrence execution, or a formula whose derivation is already shown, do not append a ceremonial correctness proof.
+- Give a separate complexity analysis only when the bound needs amortization, a global sum, several parameters, or a nontrivial data-structure argument.
+- When the bound follows immediately from the loops or state count, state it once beside the method. Do not repeat the same complexity for every subtask that shares the method.
 
 ## Human-readable style
 
@@ -58,12 +67,12 @@ Keep one stable name for each object; do not cycle through synonyms for variety.
 - Use ordinary Markdown links for cited material and record sources without copying protected content.
 - Keep images simple and readable; avoid them when text or a small formula is clearer.
 
-## Correctness and code correspondence
+## Necessary correctness and code correspondence
 
-For every nontrivial claim, show the implication needed by the algorithm. State base cases, maintained invariants, transition completeness, and why the reported answer equals the required quantity. Cover ties, empty/extreme states, overflow, indexing, and multi-test reset when relevant.
+For every nontrivial claim, show the implication needed by the algorithm at the point where it is used. State base cases, maintained invariants, transition completeness, or final-answer correspondence only when they are not already immediate from the derivation. Cover ties, empty or extreme states, overflow, indexing, and multi-test reset when relevant.
 
 Use the same notation in prose, formulas, and code. Map each important state or structure to its implementation. Keep the main routine clean and use procedural C++ plus STL or small focused structs. Verify that the delivered reference code hashes to the accepted primary std when the package requires an exact copy.
 
 ## Editorial review
 
-Review against the frozen statement, subtask table, manifest, score matrix, and std. Run the revision pass in [human-readable-contest-text.md](human-readable-contest-text.md), then render the Markdown with the target engine. Reject the editorial if it skips a distinct partial method, claims an untested score, contains a proof gap, contradicts code, fails any shared statement/editorial Markdown check, overexplains routine syntax, or reads like a reusable generic answer rather than this problem's reasoning.
+Review against the frozen statement, subtask table, manifest, score matrix, and std. Run the revision pass in [human-readable-contest-text.md](human-readable-contest-text.md), then render the Markdown with the target engine. Reject the editorial if it skips a genuine partial algorithm, invents a method for an implementation-only scoring boundary, claims an untested score, leaves a non-obvious proof gap, contradicts code, fails any shared statement/editorial Markdown check, overexplains routine syntax, or reads like a reusable generic answer rather than this problem's reasoning.

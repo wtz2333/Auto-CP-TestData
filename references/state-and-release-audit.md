@@ -26,7 +26,7 @@ After a change, invalidate the changed artifact's gate and every dependent resul
 | Statement style or narrative-only rewrite scope | Statement draft, style/equivalence review, rendering, and any sample passage changed with it |
 | Mathematical definition, input/output, constraints, subtasks, or judge mode | Statement review, std/brute review, validator, generator plan, samples, all data, solution matrix, timing, editorial, release audit |
 | Scoring mode, unit membership, points, or dependencies | Subtask table, manifest, candidate score calculation, partial-solution claims, editorial, and release audit; rerun data/validator gates too when membership constraints changed |
-| Package format or output path | Packaging, allowlist/archive verification, delivery hashes, and release audit |
+| Package format, archive policy, or output path | Packaging decision, directory allowlist or archive verification when applicable, delivery hashes, and release audit |
 | Samples only | Sample validation, displayed/file consistency, statement review of the affected passage |
 | `std.cpp` or answer semantics | Proof/code review, differential tests, all answers, candidate matrix, timing, editorial code correspondence |
 | `brute.cpp` | Brute audit and every differential/stress result that used it |
@@ -53,6 +53,7 @@ Issue `decision: go` only when all required gates are current and their evidence
 - Data legality, answer, uniqueness, reproducibility, role coverage, and strength results.
 - Scoring-unit definition, candidate verdict/score breakdown, and timing evidence.
 - Editorial review result.
+- Archive policy and its authority; when policy is `none`, confirmation that no release ZIP/archive was created.
 - Unresolved risks, which must be empty for `go`.
 
-Reject release when TODO markers, placeholders, empty implementations, stale reports, missing referenced files, unexpected package members, or internal-only materials remain. When packaging is in scope, verify the archive by extracting it to a temporary directory and comparing its contents with an explicit allowlist.
+Reject release when TODO markers, unfilled statement-template markers, render directives such as `{{ ... }}`, empty implementations, stale reports, missing referenced files, unexpected package members, or internal-only materials remain. Directory delivery is the default. Only when `archive_policy` is `user-requested` or `platform-required`, verify the archive by extracting it to a temporary directory and comparing its contents with an explicit allowlist; when policy is `none`, creating a release archive is itself a blocking mismatch.

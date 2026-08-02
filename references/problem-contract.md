@@ -15,7 +15,7 @@ Start from `assets/task.example.json` and complete the gate in [intake-and-clari
 
 Use `user` when the user selected the value and `delegated` only after the user explicitly authorized Codex to decide it. Use `discovered` and `derived` for technical facts supported by source evidence or a recorded derivation. Use `unresolved` while a conflict or missing answer remains. Do not enter a mutating workflow step while a required preference is unresolved.
 
-Keep the original-problem path, resolved output path, case-count policy, deliverables, scoring mode and design authority, statement style, rewrite scope, target audience, and package format in this contract. The final concrete scoring mode and exact generated case count must match `pipeline.json`.
+Keep the original-problem path, resolved output path, case-count policy, deliverables, scoring mode and design authority, statement style including protagonist aliases, rewrite scope, target audience, package format, and archive policy in this contract. The final concrete scoring mode and exact generated case count must match `pipeline.json`.
 
 ## Required facts
 
@@ -52,7 +52,7 @@ problem/
 
 Keep sources and declarative case plans under version control. Do not put generated problem artifacts inside the Skill folder.
 
-Keep the source baseline, directory inventory, and rewrite record internal. Put only the rewritten Chinese statement and intended samples in contestant-facing locations. Record accepted data provenance and hashes in the report. Add statement, editorial, rewrite record, and sample files to `text_files` when the pipeline enforces LF.
+Keep the source baseline, directory inventory, and rewrite record internal. Put only the rewritten Chinese statement and intended samples in contestant-facing locations. Record accepted data provenance and hashes in the report. Add statement, editorial, rewrite record, and sample files to `text_files` when the pipeline enforces LF. `text_files` must contain exactly one file named `statement.md`; the pipeline treats its filled standalone Markdown form as a release gate.
 
 Adapt the layout to the surrounding package. If it requires `src/std.cpp`, `src/gen.cpp`, `src/val.cpp`, `src/brute.cpp`, a root `run.sh`, and separate `cases/examples` and `cases/data`, use that layout consistently; do not create a second conflicting hierarchy.
 
@@ -78,6 +78,8 @@ For `per_case`, every unit is a single-case `case` unit. For `bundled`, every un
 
 Optional fields include `compiler`, `cxxflags`, output directories, timeouts, `output_compare` (`tokens` or `exact`), `max_output_bytes`, `generator_args`, `validator_args`, `text_files`, timing controls, and `solutions`.
 
+The runner does not create release archives. `archive_policy: none` is the default and means directory delivery only. When policy is `user-requested` or `platform-required`, create and verify the archive as an explicit release step after the ordinary pipeline passes.
+
 Each solution expectation may contain:
 
 ```json
@@ -99,6 +101,8 @@ Calculate `score_min` and `score_max` under the configured scoring units, includ
 ## Text and source-of-truth rules
 
 Keep `std.cpp` as the single primary answer source. Verify hashes when copying it into a delivery tree. Require LF line endings for source, configuration, shell, Markdown, input, and answer files when the project specifies LF; configure extra files through `text_files`. On Windows, normalize generated CRLF to LF before validation, hashing, and storage, while rejecting isolated carriage returns.
+
+The final `statement.md` must be a completely filled instance of `assets/statement-template-strict.md`, directly readable without a template engine. Reject `【填写...】`, `【按需...】`, `{{ ... }}`, `sample.text`, `sample.file`, missing required sections, or samples represented only by includes.
 
 Use fixed seeds and explicit modes in the declarative case list or `run.sh`. Reuse original formal inputs only when the intake contract requires retention; preserve their token sequence and mathematical instance, copy bytes unchanged when the package text policy allows it, and otherwise normalize only encoding or line endings while recording both source and delivered hashes. Repair answers separately and make adopted paths explicit in the manifest. Otherwise use original inputs only as coverage references or differential-test material.
 
