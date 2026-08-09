@@ -24,43 +24,15 @@
 
 ```mermaid
 flowchart TD
-    SRC["原题目录<br/>题面、std 与可选资源"] --> INV["只读盘点<br/>恢复已有事实和缺失项"]
-    INV --> ASK["固定开工确认单<br/>只询问不可发现的偏好或冲突"]
-    ASK --> CONTRACT["task.json<br/>冻结权限、接口、计分与资源限制"]
-    CONTRACT --> G1{{"Gate 1<br/>输入合同完整"}}
-
-    G1 --> BASE["恢复数学定义<br/>建立来源基线与改动记录"]
-    BASE --> G2{{"Gate 2<br/>原题基线可靠"}}
-
-    G2 --> STATEMENT["重写中文题面<br/>新标题、新样例、约束与子任务"]
-    STATEMENT --> SREVIEW["语义等价审查<br/>自然语言审查与渲染检查"]
-    SREVIEW --> G3{{"Gate 3<br/>题面与评测合同冻结"}}
-
-    G3 --> ORACLE["std.cpp + brute.cpp<br/>证明、穷举、差分与边界测试"]
-    ORACLE --> G4{{"Gate 4<br/>主标答可信"}}
-
-    G4 --> EXISTING{"是否提供正式数据？"}
-    EXISTING -- "是" --> AUDIT["审计合法性、答案、覆盖、强度与时限"]
-    AUDIT --> REUSE{"全部满足要求？"}
-    REUSE -- "是" --> ADOPT["按哈希采用已有输入<br/>重新核对答案"]
-    REUSE -- "否" --> DESIGN["设计 case、profile、seed 与攻击目标"]
-    EXISTING -- "否" --> DESIGN
-    DESIGN --> TOOLS["实现 gen.cpp 与 valid.cpp<br/>测试校验器正例和反例"]
-    TOOLS --> PIPELINE["run_pipeline.py<br/>build → config → generate → evaluate"]
-    ADOPT --> PIPELINE
-
-    PIPELINE --> REDTEAM["至少 3 轮盲态对抗 Agent<br/>以错误或越界解最大化得分"]
-    REDTEAM --> MATRIX["正确解 / 部分分解 / 近复杂度解 / 错误解<br/>完整判定与计分矩阵"]
-    MATRIX --> SURVIVE{"错误或越界程序意外通过？"}
-    SURVIVE -- "是" --> REPAIR["定位最小反例与缺失数据性质<br/>更新计划和生成器"]
-    REPAIR --> PIPELINE
-    SURVIVE -- "否" --> ACCEPT["独立 std 交叉验证<br/>部分分实测与最大数据压测"]
-    ACCEPT --> G5{{"Gate 5<br/>数据验收通过"}}
-
-    G5 --> EDITORIAL["中文题解<br/>真实部分分 → 完整做法 → 必要证明"]
-    EDITORIAL --> EREVIEW["题解、代码和计分证据一致性复核"]
-    EREVIEW --> G6{{"Gate 6<br/>题解冻结"}}
-    G6 --> RELEASE["最终 go / no_go 审计<br/>交付完整目录"]
+    INPUT["原题目录"] --> INTAKE["盘点资料并确认需求"]
+    INTAKE --> FREEZE["重写并冻结中文题面、约束与计分"]
+    FREEZE --> ORACLE["验证标准程序与暴力程序"]
+    ORACLE --> DATA["审计已有数据或生成异构数据"]
+    DATA --> ATTACK["至少 3 轮对抗测试"]
+    ATTACK --> STRONG{"数据强度达标？"}
+    STRONG -- "否" --> DATA
+    STRONG -- "是" --> ACCEPT["独立复核、压测与验收"]
+    ACCEPT --> RELEASE["编写题解并完成发布审计"]
 ```
 
 图中的返工不是随机重试。每次补强都必须先定位错误程序的具体缺陷，再把缺失性质映射到数据 profile 或确定性构造。若数学定义、接口、计分单元、资源限制等上游内容发生变化，工作流会按失效矩阵重新运行所有受影响的阶段。
