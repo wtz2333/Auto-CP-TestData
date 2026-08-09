@@ -12,9 +12,9 @@
 | 需求冻结 | 使用固定开工确认单确定输出位置、交付范围、计分方式、数据数量、题面风格、改写范围、目标选手与题包格式 |
 | 题面重写 | 保持数学问题和满分核心算法不变，将中文、英文或双语原题重写为完整中文题面，并重新设计样例与子任务 |
 | 标准解校验 | 审核 `std.cpp`，另写 `brute.cpp`，进行小规模穷举、差分测试、边界检查和复杂度审计 |
-| 数据处理 | 先审计已有数据；合法、正确且强度达标时按哈希直接采用，否则使用固定 seed 的生成器补全或重建 |
+| 数据处理 | 先审计已有数据；生成多测输入时混合不同结构、规模和攻击目标，并让各文件的组成与顺序保持异构 |
 | 计分配置 | 支持独立测试点、子任务捆绑与混合计分，并从冻结的计分单元生成 `data/config.yaml` |
-| 强度验证 | 使用正确解、真实部分分解和多类已证明错误的程序跑完整矩阵；错误程序意外通过时自动回到数据设计环节 |
+| 强度验证 | 至少进行三轮盲态对抗 Agent 攻击，并使用正确解、真实部分分解、近复杂度解和多类错误解运行完整矩阵 |
 | 资源一致性 | 对生成器、校验器、标答、暴力、候选程序和压测统一应用时间、内存与栈限制 |
 | 题解与发布 | 编写覆盖所有真实部分分算法的中文题解，完成独立复核、时限压测和最终 `go` / `no_go` 审计 |
 
@@ -49,7 +49,8 @@ flowchart TD
     TOOLS --> PIPELINE["run_pipeline.py<br/>build → config → generate → evaluate"]
     ADOPT --> PIPELINE
 
-    PIPELINE --> MATRIX["正确解 / 部分分解 / 错误解<br/>完整判定与计分矩阵"]
+    PIPELINE --> REDTEAM["至少 3 轮盲态对抗 Agent<br/>以错误或越界解最大化得分"]
+    REDTEAM --> MATRIX["正确解 / 部分分解 / 近复杂度解 / 错误解<br/>完整判定与计分矩阵"]
     MATRIX --> SURVIVE{"错误或越界程序意外通过？"}
     SURVIVE -- "是" --> REPAIR["定位最小反例与缺失数据性质<br/>更新计划和生成器"]
     REPAIR --> PIPELINE
@@ -63,6 +64,10 @@ flowchart TD
 ```
 
 图中的返工不是随机重试。每次补强都必须先定位错误程序的具体缺陷，再把缺失性质映射到数据 profile 或确定性构造。若数学定义、接口、计分单元、资源限制等上游内容发生变化，工作流会按失效矩阵重新运行所有受影响的阶段。
+
+三轮对抗依次覆盖常见错误、得分最大化和基于公开分数反馈的自适应攻击；三轮之后仍有超额得分时继续追加，并在最终数据上回归全部候选程序。
+
+对于包含多组测试的单个输入文件，只要约束允许，就必须混合至少两类结构，并让不同文件的类型比例、规模和顺序不同。
 
 ## 输入要求
 
@@ -207,6 +212,7 @@ build-cp-testdata/
 - [`references/oracle-and-complexity-audit.md`](references/oracle-and-complexity-audit.md)：标答与暴力验证；
 - [`references/existing-data-audit.md`](references/existing-data-audit.md)：已有数据审计；
 - [`references/test-design.md`](references/test-design.md)：对抗性数据设计；
+- [`references/adversarial-agent-review.md`](references/adversarial-agent-review.md)：三轮红队攻击、异构多测与近复杂度验收；
 - [`references/testdata-config.md`](references/testdata-config.md)：计分配置生成；
 - [`references/runtime-resource-policy.md`](references/runtime-resource-policy.md)：统一时间、内存与栈策略；
 - [`references/solution-writing.md`](references/solution-writing.md)：部分分与完整题解；
@@ -222,7 +228,11 @@ build-cp-testdata/
 - 固定 seed 能逐字节复现输入和答案；
 - 正式输入原则上不重复，文本文件使用 UTF-8 与 LF；
 - `data/config.yaml` 与冻结的计分单元一致；
+- 每个非满分计分单元都有具体可行算法、代表程序和实测得分；
+- 多测输入具有文件内和文件间异构性，不是同一类型仅更换随机种子；
 - 每种真实部分分算法和已知错误类型都经过完整数据实测；
+- 至少三轮独立对抗 Agent 已完成，全部候选程序已在最终数据哈希上回归；
+- 仅多一个 `log` 或其他接近标答复杂度的方案已完成定向最坏结构与实测比较；
 - 最大数据在统一资源限制下完成重复压测；
 - 题面、题解、代码、计分和报告之间没有未解决矛盾；
 - 最终审计结果为 `go`，且阻塞问题列表为空。

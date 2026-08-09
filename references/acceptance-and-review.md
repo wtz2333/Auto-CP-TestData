@@ -5,8 +5,9 @@
 1. Evidence package
 2. Blind independent solutions
 3. Subtask scoring audit
-4. Time-limit calibration
-5. Review disposition
+4. Adversarial strength audit
+5. Time-limit calibration
+6. Review disposition
 
 ## Evidence package
 
@@ -18,6 +19,7 @@ Keep one primary oracle source. Do not maintain divergent copies of `std.cpp`; w
 - Generator modes and seeds, validator group arguments, input/answer hashes, and duplicate decisions.
 - Validator positive/negative corpus and every expected/observed classification.
 - Scoring-unit definition, candidate verdict matrix, per-unit score breakdown, and timing runs.
+- Multi-test family composition, close-complexity frontier, and all adversarial-agent round reports.
 - Raw reviewer reports, disposition records, fixes, and recheck evidence.
 
 Separate build workspace, final deliverables, and internal reports when the surrounding project defines such directories. Never leak formal data, editorials, source mappings, or internal reports into a contestant download package.
@@ -30,9 +32,17 @@ Cross-check the primary std, both independent stds, any original reference imple
 
 ## Subtask scoring audit
 
-Use a reviewer who did not design the data-strength expectations. Implement one representative solution for every distinct partial algorithm or complexity class; one program may cover several scoring units using the same method. Run each on the complete formal set and compare its actual score and timeout pattern with the manifest. Recalculate with the frozen `per_case`, `bundled`, or `mixed` rule; a bundle earns no points unless all member cases and dependency units pass.
+Use a reviewer who did not design the data-strength expectations. Require every non-full scoring unit to identify a concrete correct-on-that-unit algorithm and representative program. If a row has no such method or exists only to increase subtask count, reopen statement and scoring design. One program may cover several units only when each unit still has a meaningful public constraint and the shared method is explicitly justified.
+
+Run each representative on the complete formal set and compare its actual score and timeout pattern with the manifest. Recalculate with the frozen `per_case`, `bundled`, or `mixed` rule; a bundle earns no points unless all member cases and dependency units pass.
 
 If a weaker algorithm earns too much, decide whether the statement's score explanation is wrong or the data is weak. Update the explanation or strengthen/regenerate data, then rerun the full regression.
+
+## Adversarial strength audit
+
+Require at least three qualifying rounds under [adversarial-agent-review.md](adversarial-agent-review.md). Reviewers must verify agent isolation, distinct defects or complexity classes, compilable candidates, per-unit scores, repairs, and final hashes. The final case set must be rerun against every candidate accumulated across all rounds.
+
+Audit multi-test heterogeneity file by file. When multiple legal families exist, reject any formal multi-test input filled entirely from one family, and reject a formal set whose files differ only by seed. Require a clean adaptive round after the final repair. Missing agent capability, stale round evidence, or unresolved excess score blocks data acceptance.
 
 ## Time-limit calibration
 
@@ -41,6 +51,8 @@ Mark every maximum-scale case used for timing. Compile with the exact release co
 When following the supplied NOIP packaging convention, multiply the slowest time by three, round upward to a whole second, and clamp the result to 1 through 5 seconds. If the unclamped result exceeds 5 seconds, optimize the oracle or revise constraints rather than silently assigning more time. Record OS, CPU identifier, compiler version, flags, all raw runs, and the derived limit.
 
 Treat timing as host-specific empirical evidence. Retain a comfortable separation between the oracle and intended TLE solutions.
+
+For every plausible near-frontier complexity, benchmark a representative on the input shape that realizes its costly path. Record actual operation estimates, crossover scale, at least three raw runs per marked case, the slowest result, and the candidate-to-oracle ratio. If an extra-logarithmic or otherwise close algorithm remains safely inside the limit on all valid worst cases, treat it as a valid alternative or revise the constraint/limit design; do not declare it rejected from asymptotics alone.
 
 ## Review disposition
 

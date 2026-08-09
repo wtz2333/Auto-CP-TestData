@@ -4,12 +4,16 @@
 
 1. Program classes
 2. Wrong-solution catalog
-3. Verdict and score expectations
-4. Survivor diagnosis
+3. Close-complexity candidates
+4. Three-round adversarial agents
+5. Verdict and score expectations
+6. Survivor diagnosis
 
 ## Program classes
 
 Maintain `accepted`, `subtask`, and `wrong` directories. For every non-oracle program, record its algorithm, complexity, supported domain, known defect, expected verdicts, and expected score interval. Implement one representative for each distinct partial algorithm or complexity; do not duplicate programs merely because one algorithm covers several scoring rows. Prefer a minimal mutation isolating one defect over a noisy program containing many unrelated bugs.
+
+Every non-full public scoring unit must name a concrete correct-on-that-unit algorithm and an executable representative. If no such method exists, reopen subtask design and merge, remove, or replace the unit. Do not use a row whose only purpose is increasing the row count or catching an implementation mistake.
 
 ## Wrong-solution catalog
 
@@ -34,6 +38,18 @@ Select only relevant defects:
 - Parsing/output assumptions and unstable randomized algorithms.
 
 Avoid undefined behavior unless it is the target; otherwise failure gives weak evidence about data quality.
+
+## Close-complexity candidates
+
+List the plausible complexity frontier around the full solution. Include candidates that add only one logarithmic factor, one extra data-structure operation, a larger state dimension, a close polynomial factor, pseudo-polynomial dependence, or excess memory when those approaches are realistic for contestants.
+
+For each class, write one representative, estimate actual operations and crossover scale, and identify the formal structures that realize its worst path. Benchmark it beside the oracle under identical compiler and resource settings. A worse asymptotic label alone is not a wrong-solution proof; if the candidate passes every valid worst case with comfortable margin, reclassify it as accepted or revise the constraints and time limit fairly.
+
+## Three-round adversarial agents
+
+Run [adversarial-agent-review.md](adversarial-agent-review.md) for at least three qualifying rounds. Keep the adversarial agent blind to the oracle, generator, validator, formal data, manifest, and previous source code. Its objective is to maximize undeserved score using plausible non-full solutions.
+
+Each round must add a new proved-wrong defect or complexity class, compile and run it on all formal cases, and record per-unit scores. Preserve every candidate in the regression suite. After a repair, rerun the accumulated portfolio on the final data hashes and require a clean adaptive round before closing the strength gate.
 
 ## Verdict and score expectations
 

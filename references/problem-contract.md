@@ -46,6 +46,7 @@ problem/
   logs/
   manifest.json
   verdicts.json
+  adversarial-review.md
   report.md
   solution.md
 ```
@@ -69,7 +70,7 @@ Start from `assets/pipeline.example.json`. Paths are relative to the configurati
 - `memory_limit_mib`: positive release memory limit matching the task contract.
 - `stack_limit_mib`: positive runtime stack limit no greater than `memory_limit_mib`; omit it only to use the required default equal to `memory_limit_mib`.
 
-Each case must also provide nonempty semantic `tags` and a written `purpose` explaining what the point proves or attacks.
+Each case must also provide nonempty semantic `tags` and a written `purpose` explaining what the point proves or attacks. For a file containing multiple test instances, keep its family names, counts, size bands, order policy, aggregate-bound accounting, and intended kills in the manifest even when those problem-specific fields are not interpreted by the generic runner.
 
 Treat `scoring.units` as the score source of truth. Every unit has a unique id, a type (`case` or `bundle`), a nonempty list of case ids, nonnegative points, and optional `depends_on` unit ids. Every configured case belongs to exactly one unit. Dependencies must be acyclic. Unit points must sum to `scoring.total_points`.
 
@@ -95,7 +96,7 @@ Each solution expectation may contain:
 
 Use `["*"]` for all configured cases. `must_fail_one_of` means at least one listed case must produce a non-AC verdict.
 
-For every candidate solution, also record its role, algorithm, complexity, and supported domain. A wrong solution additionally records `defect_layer` (`conceptual`, `complexity`, or `implementation`), the isolated defect, and the intended killing profile.
+For every candidate solution, also record its role, algorithm, complexity, supported domain, provenance, and adversarial round when applicable. A wrong solution additionally records `defect_layer` (`conceptual`, `complexity`, or `implementation`), the isolated defect, and the intended killing profile.
 
 Calculate `score_min` and `score_max` under the configured scoring units, including all-or-nothing bundles and dependencies. Preserve a per-unit score breakdown in the verdict artifact.
 

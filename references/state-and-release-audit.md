@@ -32,6 +32,7 @@ After a change, invalidate the changed artifact's gate and every dependent resul
 | `brute.cpp` | Brute audit and every differential/stress result that used it |
 | Validator or group promises | Validator positive/negative suite and legality audit of every sample/formal input |
 | Generator, case plan, seed, or formal input | Reproducibility, validation, answer generation, hashes, duplicate checks, candidate matrix, timing where applicable |
+| Adversarial candidate portfolio or round result | Complete candidate matrix, per-unit scores, excess-score decisions, final clean-round evidence, and release audit |
 | Checker or comparison mode | Checker self-tests, answer consistency, std/brute comparison, candidate matrix |
 | Time, memory, stack limits, runtime resource mechanism, or release flags | Generation, validation, oracle answers, differential tests, candidate matrix, independent acceptance, maximum-case benchmarks, and every resource-dependent verdict |
 | Editorial | Editorial review only, unless it exposes a contradiction in an earlier artifact |
@@ -51,7 +52,10 @@ Issue `decision: go` only when all required gates are current and their evidence
 - Oracle/brute proof and differential evidence.
 - Validator positive/negative results.
 - Data legality, answer, uniqueness, reproducibility, role coverage, and strength results.
+- Multi-test family-composition evidence and confirmation that files are not single-family seed variants.
+- At least three qualifying adversarial-agent rounds, the accumulated candidate ledger, final-hash regression, and a clean last adaptive round.
 - Scoring-unit definition, candidate verdict/score breakdown, and timing evidence.
+- A concrete tested solution for every non-full scoring unit and close-complexity operation/timing evidence.
 - Requested stack limit, effective operating-system mechanism, and confirmation that every executable class used the same policy.
 - Editorial review result.
 - Archive policy and its authority; when policy is `none`, confirmation that no release ZIP/archive was created.

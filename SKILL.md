@@ -35,7 +35,7 @@ Enforce six gates:
 2. Recover a reliable source baseline and internal change record before rewriting.
 3. Freeze the rewritten mathematical definition, interface, constraints, scoring, samples, and judge mode before formal data generation.
 4. Freeze the primary `std.cpp` only after proof review, brute-force comparison, and boundary checks.
-5. Accept data only after validation, duplicate/LF checks, answer cross-checking, scoring-unit tests, derived `data/config.yaml` checks, timing calibration, and review records pass.
+5. Accept data only after validation, duplicate/LF checks, answer cross-checking, multi-test heterogeneity review, scoring-unit tests, close-complexity benchmarks, at least three adversarial-agent rounds, derived `data/config.yaml` checks, timing calibration, and review records pass.
 6. Freeze the editorial only after it covers every genuine partial algorithm and the full solution, explains non-obvious correctness or complexity points where needed, and matches accepted boundaries and implementation artifacts.
 
 Do not finalize an editorial or downstream package while a data-acceptance issue remains open.
@@ -59,6 +59,8 @@ Record selected/missing artifacts. Read every plausible statement and std candid
 Read [references/statement-rewrite.md](references/statement-rewrite.md), [references/luogu-text-format.md](references/luogu-text-format.md), and [references/human-readable-contest-text.md](references/human-readable-contest-text.md), then copy the section skeleton from [assets/statement-template-strict.md](assets/statement-template-strict.md) and fill it completely. Delete optional sections that do not apply. The delivered `statement.md` must be a standalone, directly readable Markdown document; it must contain no fill markers, render directives, macros, or template expressions such as `【填写...】`, `【按需...】`, `{{ sample.text(1) }}`, `sample.file`, or any other `{{ ... }}` form. Recover the complete original mathematical problem first; if its definition, interface, or constraints remain unreliable, mark it unusable instead of inventing semantics.
 
 Replace the displayed title, background, variable names, and exposition while preserving the mathematical problem and indispensable full-score algorithm. Record every material change internally. Design entirely new sample instances and a mutually exclusive subtask table tied internally to planned formal cases. The public statement must not list test-case ids. Merge all rows with the same contestant-visible constraint predicate into one public subtask and one executable scoring unit; internal generator profiles, sources, or attack purposes never justify splitting the same problem scale into multiple subtasks. Make ambiguity-sensitive boundaries explicit in prose or samples.
+
+Require every non-full public subtask to have a concrete correct-on-that-subtask algorithm and an executable representative with measured score evidence. Do not add rows merely to increase the number of subtasks or create decorative score levels. Merge, remove, or redesign any row that has no specific solvable method or only targets an implementation mistake.
 
 Apply the frozen `formal`, `light-context`, or `themed` style. Stay within the authorized rewrite scope. Record protagonist aliases as part of `statement_style`: by default enable `["小 W", "小 Z"]`; permit the user to disable or replace them. When enabled, use them naturally where the selected background has actual actors, but do not invent an actor paragraph merely to mention the names in an otherwise formal statement. For a themed statement, use only approved theme elements and keep the mathematical definition independently readable.
 
@@ -94,7 +96,9 @@ Freeze `std.cpp` only after passing. If brute force is infeasible, require an in
 
 If input/answer files are supplied, read [references/existing-data-audit.md](references/existing-data-audit.md) and inspect them before generating anything. Validate file count, names, LF, syntax, global and group constraints, uniqueness, answer correctness, subtask coverage, boundary/maximum coverage, candidate-solution strength, and timing. If all requirements pass, adopt the existing files by hash and do not regenerate them. If only some fail, preserve passing files and replace only affected points unless the data design is fundamentally inconsistent.
 
-When data is missing or rejected, assign every case an id, seed, generation profile, validator group, scoring unit, semantic-role tags, written purpose, structural features, and intended kills. Maintain a manifest mapping case ids and scoring units to constraints, strategy, critical properties, and expected attacked mistakes. Read [references/test-design.md](references/test-design.md). Cover deterministic boundaries before random cases, and distinguish correctness extremes from complexity worst cases. With fixed `N`, replace weak slots instead of adding cases.
+When data is missing or rejected, assign every case an id, seed, generation profile, validator group, scoring unit, semantic-role tags, written purpose, structural features, and intended kills. Maintain a manifest mapping case ids and scoring units to constraints, strategy, critical properties, and expected attacked mistakes. Read [references/test-design.md](references/test-design.md) and [references/adversarial-agent-review.md](references/adversarial-agent-review.md). Cover deterministic boundaries before random cases, and distinguish correctness extremes from complexity worst cases. With fixed `N`, replace weak slots instead of adding cases.
+
+For input files containing multiple test instances, mix distinct legal structural families within each formal file and vary their composition and order across files. Do not treat one profile repeated under different seeds as heterogeneous data. Record the family composition and aggregate-limit accounting for every multi-test input.
 
 For bounded strength-driven `bundled` scoring, retain every supplied formal input in the delivered set, subject to legality and answer repair, then add named hack or stress cases only when they attack an evidenced wrong or out-of-scope solution. Keep at least 20 and at most 40 formal pairs. Stop adding cases once every planned defect and complexity class is rejected; the final exact count is a result of the strength audit, not an intake preference. If more than 40 supplied formal inputs exist, or a supplied input is illegal and cannot be preserved without changing the mathematical contract, stop for user resolution.
 
@@ -109,6 +113,8 @@ Test the validator as a classifier, not only as a parser. The positive suite mus
 ### 6. Implement deterministic gen.cpp
 
 Accept `--case`, `--seed`, and `--profile`, and emit one complete file on stdout. Never seed from time, `random_device`, process id, or ambient state. Encode every hand-built counterexample as a named profile. Adapt [assets/gen.cpp](assets/gen.cpp) and remove customization markers.
+
+When one generated file contains multiple test instances, compose it from the named families recorded in the manifest. Mix at least two legal families whenever possible, vary family counts and order across formal files, and keep the composition deterministic under the fixed seed.
 
 ### 7. Generate, validate, and answer
 
@@ -132,6 +138,8 @@ Express expected score ranges under the frozen scoring units. Do not estimate a 
 
 ### 9. Evaluate and close the loop
 
+Dispatch an independent adversarial contestant agent and complete at least three qualifying rounds under [references/adversarial-agent-review.md](references/adversarial-agent-review.md). Keep it blind to the oracle, generator, validator, formal data, manifest, and other candidate source. Its objective is to maximize undeserved score with plausible non-full solutions. If independent-agent capability is unavailable, block data acceptance.
+
 Run every candidate on every pair and produce AC/WA/TLE/RE/CE verdicts. For an unexpected survivor:
 
 1. Decide whether it is actually correct.
@@ -140,7 +148,7 @@ Run every candidate on every pair and produce AC/WA/TLE/RE/CE verdicts. For an u
 4. Update the plan and `gen.cpp`; never hand-patch `.in`.
 5. Regenerate inputs and answers, revalidate all cases, and rerun the full matrix.
 
-Repeat until all gates pass. Random retries without a stated hypothesis do not count as strengthening.
+Repeat until all gates pass. Random retries without a stated hypothesis do not count as strengthening. A round counts only when it adds a new proved-wrong defect or complexity class, compiles and executes the candidate, and records per-unit scores. The final data hashes must be rerun against every candidate accumulated across all rounds, and the last repair must be followed by a clean adaptive round.
 
 Retain a per-unit score breakdown for every candidate. For a dependency failure, distinguish “member cases passed” from “points awarded” so the report explains why a bundle received zero.
 
@@ -151,6 +159,8 @@ After every repair, apply the invalidation matrix in [references/state-and-relea
 Read [references/acceptance-and-review.md](references/acceptance-and-review.md). After the statement is frozen, have two independent reviewers derive and code solutions without seeing the main analysis or `std.cpp`. Cross-check the primary std, both independent solutions, any original std, and `brute.cpp` on their applicable domains; run both independent solutions over every sample and formal case. Resolve disagreements with a proof, oracle, or minimized counterexample, never by majority vote.
 
 Have a separate reviewer audit the subtask algorithms and measured scores. Benchmark every maximum-scale case at least three times when calibrating the time limit, retain the slowest single-case run, record the CPU/compiler, and apply the project formula. Save raw reviews, disposition of every comment, fixes, and recheck results.
+
+Require the same acceptance review to verify multi-test family composition, every non-full unit's concrete representative solution, the close-complexity benchmark frontier, all adversarial-agent round reports, and a full regression on final data hashes. Fewer than three qualifying rounds or any unresolved excess score is a blocking issue.
 
 Before release, write the structured `go`/`no_go` report required by [references/state-and-release-audit.md](references/state-and-release-audit.md). Its evidence must be current; a directory containing all expected filenames is not sufficient. Release the complete directory by default. Only build and verify an archive when `archive_policy` is `user-requested` or `platform-required`.
 
@@ -167,5 +177,7 @@ Write for a human reader: connect observations concretely, avoid canned introduc
 ## Exit criteria
 
 Finish only when the intake contract is complete; the inventory is resolved; the final statement is fully Chinese, follows the frozen style and rewrite scope, is a standalone filled instance of the fixed statement template, embeds ordinary samples directly in fenced `text` blocks, uses the target Markdown renderer's `$...$` and `$$...$$` math syntax without unsupported `\(...\)` or `\[...\]` delimiters, strictly conforms to the selected platform standard, renders successfully, and passes both semantic and natural-prose review; every sample is legal and answer-checked; accepted existing data or generated data satisfies the same gates; the final pair count satisfies the frozen fixed or bounded policy and matches the executable pipeline; scoring units are valid; `data/config.yaml` is current, derived from those units, references every formal pair exactly once, and is included in the release; identical public constraint predicates have been merged and the public statement exposes no case ids; newly written std and genuine partial solutions pass the C++ style checklist and compile under the frozen language standard; the recorded stack limit defaults to the memory limit and is actually applied to every pipeline-run executable; correct and partial solutions receive intended bundled or independent scores; maximum cases apply measured pressure; the archive policy is recorded and no archive exists unless it was explicitly requested or platform-required; and the final audit says `go` with no blocking issue. Reject TODO markers, unfilled `【填写...】` or `【按需...】` markers, `{{ ... }}` expressions, `sample.text`, `sample.file`, other renderer directives, empty implementations, stale evidence, missing references, an unprovisioned or silently reduced stack limit, unsupported math delimiters, unbalanced math spans, LaTeX commands outside math spans, one-off glossary paragraphs, formulaic filler, unstable terminology, or subtask constraints that require solution-oriented terminology to understand. When an editorial is requested, require coverage of every genuine partial algorithm and the full solution, code correspondence, proof and complexity detail only where non-obvious, the same shared Markdown/render checks as the statement, and a human-readability review.
+
+Also reject release when a non-full scoring unit has no concrete tested solution, a multi-test file lacks required structural heterogeneity, a plausible close-complexity class is unmeasured, fewer than three adversarial rounds qualify, the accumulated adversarial portfolio was not rerun on final hashes, or the latest adaptive round still finds unresolved excess score.
 
 Preserve unrelated files and do not delete unconfigured data. Adapt the runner before using it for interactive, output-only, multiple-answer, floating-tolerance, or custom-checker problems.

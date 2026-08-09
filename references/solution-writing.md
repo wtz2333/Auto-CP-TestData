@@ -18,7 +18,9 @@ Do not add a generic `直观理解` section when `简化题意` and the first al
 
 ## Every partial score
 
-Follow every subtask-table row in order, but distinguish a scoring row from an algorithm. If several rows use the same algorithm, explain that algorithm once and briefly point the other rows to it. For each genuine partial method, state only what is useful:
+Before drafting, verify that every non-full subtask-table row has a concrete correct-on-that-row algorithm and an executable representative whose measured score matches the claim. A row with no specific solution, or one created only to increase the number of subtasks, is a scoring-design defect: reopen the statement gate and merge, remove, or replace it.
+
+Follow every valid subtask-table row in order, but distinguish a scoring row from an algorithm. If several meaningful rows use the same method, explain that method once and briefly point the other rows to it. For each genuine partial method, state only what is useful:
 
 - Applicable test points, constraints, or special property and obtainable score.
 - Core observation and exact procedure.
