@@ -11,6 +11,7 @@
   "logs_dir": "logs",
   "time_limit_ms": 2000,
   "memory_limit_mib": 512,
+  "stack_limit_mib": 512,
   "oracle_timeout_ms": 30000,
   "generator_timeout_ms": 5000,
   "validator_timeout_ms": 2000,

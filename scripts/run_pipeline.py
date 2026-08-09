@@ -23,6 +23,9 @@ class PipelineError(RuntimeError):
     pass
 
 
+MIB = 1024 * 1024
+
+
 @dataclass
 class ProcessResult:
     status: str
@@ -63,7 +66,27 @@ def run_process(
     input_data: bytes | None,
     timeout_ms: int,
     max_output_bytes: int,
+    stack_limit_bytes: int | None = None,
 ) -> ProcessResult:
+    preexec_fn = None
+    if stack_limit_bytes is not None and os.name == "posix":
+        try:
+            import resource
+        except ImportError as exc:
+            raise PipelineError("POSIX stack provisioning requires the resource module") from exc
+
+        _, hard_limit = resource.getrlimit(resource.RLIMIT_STACK)
+        if hard_limit != resource.RLIM_INFINITY and stack_limit_bytes > hard_limit:
+            raise PipelineError(
+                f"requested stack limit {stack_limit_bytes} bytes exceeds "
+                f"the POSIX hard limit {hard_limit} bytes"
+            )
+
+        def configure_stack() -> None:
+            resource.setrlimit(resource.RLIMIT_STACK, (stack_limit_bytes, hard_limit))
+
+        preexec_fn = configure_stack
+
     started = time.perf_counter()
     try:
         process = subprocess.Popen(
@@ -71,6 +94,7 @@ def run_process(
             stdin=subprocess.PIPE if input_data is not None else subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            preexec_fn=preexec_fn,
         )
     except OSError as exc:
         return ProcessResult("RE", None, b"", str(exc).encode(), 0)
@@ -122,6 +146,10 @@ class Pipeline:
         self.max_output = int(self.config.get("max_output_bytes", 64 * 1024 * 1024))
         self.time_limit = int(self.config.get("time_limit_ms", 2000))
         self.memory_limit_mib = int(self.config.get("memory_limit_mib", 0))
+        self.stack_limit_mib = int(
+            self.config.get("stack_limit_mib", self.memory_limit_mib)
+        )
+        self.stack_limit_bytes = self.stack_limit_mib * MIB
         self.oracle_timeout = int(self.config.get("oracle_timeout_ms", self.time_limit))
         self.generator_timeout = int(self.config.get("generator_timeout_ms", 5000))
         self.validator_timeout = int(self.config.get("validator_timeout_ms", 2000))
@@ -214,6 +242,10 @@ class Pipeline:
             raise PipelineError("output_compare must be 'tokens' or 'exact'")
         if self.memory_limit_mib <= 0:
             raise PipelineError("memory_limit_mib must be a positive integer")
+        if self.stack_limit_mib <= 0:
+            raise PipelineError("stack_limit_mib must be a positive integer")
+        if self.stack_limit_mib > self.memory_limit_mib:
+            raise PipelineError("stack_limit_mib must not exceed memory_limit_mib")
         text_files = self.config.get("text_files", [])
         if not isinstance(text_files, list) or not all(isinstance(value, str) for value in text_files):
             raise PipelineError("text_files must be a list of paths")
@@ -884,13 +916,40 @@ class Pipeline:
         safe = re.sub(r"[^A-Za-z0-9_.-]", "_", key)
         return self.build_dir / f"{safe}{suffix}"
 
+    def stack_linker_flags(self, compiler: str) -> list[str]:
+        if os.name != "nt":
+            return []
+        compiler_name = Path(compiler).name.lower()
+        if "g++" in compiler_name or "clang++" in compiler_name or compiler_name == "c++":
+            return [f"-Wl,--stack,{self.stack_limit_bytes}"]
+        raise PipelineError(
+            "cannot provision the requested Windows stack with compiler "
+            f"{compiler!r}; use a supported MinGW/Clang C++ compiler or extend the runner"
+        )
+
+    def run_binary(
+        self,
+        command: list[str],
+        input_data: bytes | None,
+        timeout_ms: int,
+    ) -> ProcessResult:
+        stack_limit = self.stack_limit_bytes if os.name == "posix" else None
+        return run_process(
+            command,
+            input_data,
+            timeout_ms,
+            self.max_output,
+            stack_limit_bytes=stack_limit,
+        )
+
     def compile_one(self, key: str, source: Path, fatal: bool) -> None:
         self.build_dir.mkdir(parents=True, exist_ok=True)
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         output = self.executable_path(key)
         compiler = str(self.config.get("compiler", "g++"))
         flags = [str(flag) for flag in self.config.get("cxxflags", ["-std=c++14", "-O2", "-Wall", "-Wextra"])]
-        command = [compiler, *flags, str(source), "-o", str(output)]
+        stack_flags = self.stack_linker_flags(compiler)
+        command = [compiler, *flags, *stack_flags, str(source), "-o", str(output)]
         result = run_process(command, None, int(self.config.get("compile_timeout_ms", 30000)), self.max_output)
         log = b"COMMAND: " + shlex.join(command).encode() + b"\n\n" + result.stdout + result.stderr
         atomic_write(self.logs_dir / f"compile-{key}.log", log)
@@ -1000,6 +1059,11 @@ class Pipeline:
             "compiler": compiler,
             "compiler_version": version_line[0] if version_line else "unavailable",
             "cxxflags": flags,
+            "stack_limit_mib": self.stack_limit_mib,
+            "stack_mechanism": (
+                "windows-pe-linker-reserve" if os.name == "nt" else "posix-rlimit-stack"
+            ),
+            "stack_linker_flags": self.stack_linker_flags(compiler),
         }
 
     def build(self, include_solutions: bool) -> None:
@@ -1093,7 +1157,7 @@ class Pipeline:
                 )
             else:
                 command = [str(generator), *self.format_generator_args(case, index)]
-                first = run_process(command, None, self.generator_timeout, self.max_output)
+                first = self.run_binary(command, None, self.generator_timeout)
                 atomic_write(self.logs_dir / f"generate-{case_id}.log", first.stderr)
                 if first.status != "OK":
                     raise PipelineError(f"generator {first.status} on case {case_id}")
@@ -1102,7 +1166,7 @@ class Pipeline:
                 )
 
                 if self.config.get("check_reproducibility", True):
-                    second = run_process(command, None, self.generator_timeout, self.max_output)
+                    second = self.run_binary(command, None, self.generator_timeout)
                     if second.status == "OK":
                         second.stdout = self.normalize_generated_text(
                             second.stdout, f"repeated generated input {case_id}"
@@ -1119,18 +1183,18 @@ class Pipeline:
                 seen_input_hashes[input_hash] = case_id
 
             validator_command = [str(validator), *self.format_validator_args(case, index)]
-            checked = run_process(validator_command, first_stdout, self.validator_timeout, self.max_output)
+            checked = self.run_binary(validator_command, first_stdout, self.validator_timeout)
             atomic_write(self.logs_dir / f"validate-{case_id}.log", checked.stdout + checked.stderr)
             if checked.status != "OK":
                 raise PipelineError(f"validator rejected case {case_id}")
 
             extra_token = first_stdout + b"\n__VALIDATOR_MUST_REJECT_EXTRA_TOKEN__\n"
-            attacked = run_process(validator_command, extra_token, self.validator_timeout, self.max_output)
+            attacked = self.run_binary(validator_command, extra_token, self.validator_timeout)
             atomic_write(self.logs_dir / f"validate-extra-token-{case_id}.log", attacked.stdout + attacked.stderr)
             if attacked.status == "OK":
                 raise PipelineError(f"validator accepted an extra token on case {case_id}")
 
-            answered = run_process([str(oracle)], first_stdout, self.oracle_timeout, self.max_output)
+            answered = self.run_binary([str(oracle)], first_stdout, self.oracle_timeout)
             oracle_log = bytearray(answered.stderr)
             if answered.status != "OK":
                 raise PipelineError(f"oracle {answered.status} on case {case_id}")
@@ -1140,7 +1204,7 @@ class Pipeline:
             if case.get("benchmark"):
                 run_count = int(self.config.get("benchmark_runs", 3))
                 for run_index in range(2, run_count + 1):
-                    repeated = run_process([str(oracle)], first_stdout, self.oracle_timeout, self.max_output)
+                    repeated = self.run_binary([str(oracle)], first_stdout, self.oracle_timeout)
                     oracle_log.extend(b"\n--- benchmark run " + str(run_index).encode() + b" ---\n")
                     oracle_log.extend(repeated.stderr)
                     if repeated.status != "OK":
@@ -1283,7 +1347,7 @@ class Pipeline:
                 for case_id in self.case_ids:
                     input_data = (self.data_dir / f"{case_id}.in").read_bytes()
                     expected = (self.data_dir / f"{case_id}.ans").read_bytes()
-                    result = run_process([str(executable), *arguments], input_data, timeout, self.max_output)
+                    result = self.run_binary([str(executable), *arguments], input_data, timeout)
                     verdict = result.status
                     if verdict == "OK":
                         verdict = "AC" if self.outputs_equal(result.stdout, expected) else "WA"
@@ -1366,6 +1430,7 @@ class Pipeline:
             f"- Total points: {self.total_points:g}",
             f"- Compare mode: `{self.compare_mode}`",
             f"- Memory limit: {self.memory_limit_mib} MiB",
+            f"- Stack limit: {self.stack_limit_mib} MiB",
             "- Test data config: `"
             + str(self.testdata_config_path.relative_to(self.root)).replace("\\", "/")
             + "`",

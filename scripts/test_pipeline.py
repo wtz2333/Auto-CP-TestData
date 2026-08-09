@@ -6,6 +6,8 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -253,6 +255,45 @@ class PipelineConfigTests(unittest.TestCase):
         pipeline = self.load(config, task)
         self.assertEqual(pipeline.scoring_mode, "mixed")
         self.assertEqual(pipeline.total_points, 100)
+
+    def test_stack_limit_defaults_to_memory_limit(self) -> None:
+        pipeline = self.load()
+        self.assertEqual(pipeline.stack_limit_mib, pipeline.memory_limit_mib)
+        self.assertEqual(pipeline.stack_limit_bytes, 512 * 1024 * 1024)
+        if os.name == "nt":
+            self.assertEqual(
+                pipeline.stack_linker_flags("g++.exe"),
+                ["-Wl,--stack,536870912"],
+            )
+
+    def test_explicit_smaller_stack_limit_is_allowed(self) -> None:
+        config = self.base_config()
+        config["stack_limit_mib"] = 256
+        self.assertEqual(self.load(config=config).stack_limit_mib, 256)
+
+    def test_stack_limit_cannot_exceed_memory_limit(self) -> None:
+        config = self.base_config()
+        config["stack_limit_mib"] = 513
+        with self.assertRaisesRegex(PipelineError, "must not exceed"):
+            self.load(config=config)
+
+    def test_stack_limit_must_be_positive(self) -> None:
+        config = self.base_config()
+        config["stack_limit_mib"] = 0
+        with self.assertRaisesRegex(PipelineError, "positive integer"):
+            self.load(config=config)
+
+    @unittest.skipUnless(os.name == "nt" and shutil.which("g++"), "needs Windows g++")
+    def test_windows_build_embeds_requested_stack_reserve(self) -> None:
+        program = "int main() { return 0; }\n"
+        for name in ("gen.cpp", "valid.cpp", "std.cpp"):
+            (self.root / name).write_text(program, encoding="utf-8")
+        pipeline = self.load()
+        pipeline.build(include_solutions=False)
+        compile_log = (pipeline.logs_dir / "compile-oracle.log").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("--stack,536870912", compile_log)
 
     def test_filled_statement_template_passes(self) -> None:
         self.load().check_statement_template()

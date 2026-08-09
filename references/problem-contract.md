@@ -67,6 +67,7 @@ Start from `assets/pipeline.example.json`. Paths are relative to the configurati
 - `scoring`: one explicit `per_case`, `bundled`, or `mixed` scoring definition.
 - `testdata_config.path`: `data/config.yaml` for standard batch packages.
 - `memory_limit_mib`: positive release memory limit matching the task contract.
+- `stack_limit_mib`: positive runtime stack limit no greater than `memory_limit_mib`; omit it only to use the required default equal to `memory_limit_mib`.
 
 Each case must also provide nonempty semantic `tags` and a written `purpose` explaining what the point proves or attacks.
 
@@ -76,7 +77,7 @@ Derive `data/config.yaml` from these units and `memory_limit_mib` using [testdat
 
 For `per_case`, every unit is a single-case `case` unit. For `bundled`, every unit is a `bundle` and is awarded only when all member cases and dependency units pass. For `mixed`, require at least one single-case unit and at least one multi-case bundle. Do not derive scored points from legacy `case.points`.
 
-Optional fields include `compiler`, `cxxflags`, output directories, timeouts, `output_compare` (`tokens` or `exact`), `max_output_bytes`, `generator_args`, `validator_args`, `text_files`, timing controls, and `solutions`.
+Optional fields include `compiler`, `cxxflags`, output directories, timeouts, `output_compare` (`tokens` or `exact`), `max_output_bytes`, `generator_args`, `validator_args`, `text_files`, timing controls, and `solutions`. Apply [runtime-resource-policy.md](runtime-resource-policy.md) to every executed binary; do not bypass the runner with an unrecorded operating-system stack default.
 
 The runner does not create release archives. `archive_policy: none` is the default and means directory delivery only. When policy is `user-requested` or `platform-required`, create and verify the archive as an explicit release step after the ordinary pipeline passes.
 

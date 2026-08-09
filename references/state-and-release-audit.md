@@ -33,7 +33,7 @@ After a change, invalidate the changed artifact's gate and every dependent resul
 | Validator or group promises | Validator positive/negative suite and legality audit of every sample/formal input |
 | Generator, case plan, seed, or formal input | Reproducibility, validation, answer generation, hashes, duplicate checks, candidate matrix, timing where applicable |
 | Checker or comparison mode | Checker self-tests, answer consistency, std/brute comparison, candidate matrix |
-| Time/memory limits or release flags | Maximum-case benchmarks and every resource-dependent verdict |
+| Time, memory, stack limits, runtime resource mechanism, or release flags | Generation, validation, oracle answers, differential tests, candidate matrix, independent acceptance, maximum-case benchmarks, and every resource-dependent verdict |
 | Editorial | Editorial review only, unless it exposes a contradiction in an earlier artifact |
 
 Do not reuse a downstream `passed` status after invalidation merely because filenames did not change.
@@ -52,6 +52,7 @@ Issue `decision: go` only when all required gates are current and their evidence
 - Validator positive/negative results.
 - Data legality, answer, uniqueness, reproducibility, role coverage, and strength results.
 - Scoring-unit definition, candidate verdict/score breakdown, and timing evidence.
+- Requested stack limit, effective operating-system mechanism, and confirmation that every executable class used the same policy.
 - Editorial review result.
 - Archive policy and its authority; when policy is `none`, confirmation that no release ZIP/archive was created.
 - Unresolved risks, which must be empty for `go`.

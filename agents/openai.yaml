@@ -1,4 +1,4 @@
 interface:
   display_name: "Build CP Problem Package"
   short_description: "Build, configure, score-test, and audit CP packages"
-  default_prompt: "Use $build-cp-testdata to build and audit this competitive-programming package, write new standard and genuine partial solutions in the project's Jiangly-inspired C++ style, then write a concise Chinese editorial that explains genuine partial algorithms without inventing methods for implementation-only score boundaries or adding routine proof and complexity sections."
+  default_prompt: "Use $build-cp-testdata to build and audit this competitive-programming package, run every generated and contestant-style executable with a recorded stack limit that defaults to the memory limit, write new standard and genuine partial solutions in the project's Jiangly-inspired C++ style, then write a concise Chinese editorial that explains genuine partial algorithms without inventing methods for implementation-only score boundaries or adding routine proof and complexity sections."

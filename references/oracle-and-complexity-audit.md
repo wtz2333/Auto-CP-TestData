@@ -16,6 +16,8 @@ Turn asymptotic claims into a constraint worksheet:
 
 If implementation constants or allocator behavior matter, measure them. Do not accept “should pass” as complexity evidence.
 
+Run all resource and recursion tests under [runtime-resource-policy.md](runtime-resource-policy.md). The default runtime stack equals the frozen memory limit, but the audit must still prove that legal recursion cannot exceed that budget and that newly written accepted code does not depend on an unsafe depth. Distinguish a host-default stack failure from a failure under the configured release stack.
+
 ## Brute oracle
 
 Design `brute.cpp` from the mathematical contract, not by simplifying `std.cpp`. It must directly enforce all mandatory choices, ordering rules, duplicate behavior, ties, and feasibility conditions. Reject a brute model that changes a required object into an optional choice merely because that is easier to enumerate.
