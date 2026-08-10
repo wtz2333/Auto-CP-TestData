@@ -1,4 +1,4 @@
-# build-cp-testdata
+# Auto-CP-TestData
 
 `build-cp-testdata` 是一套面向算法竞赛命题与制题的 Codex Skill。它从一个原题目录出发，完成题目盘点、中文题面重写、标准解验证、测试数据审计或生成、错误程序攻击、部分分实测、题解撰写与发布验收，最终得到可复现、可审核的问题包。
 
