@@ -1,4 +1,4 @@
 interface:
   display_name: "Build CP Problem Package"
   short_description: "Build, configure, score-test, and audit CP packages"
-  default_prompt: "Use $build-cp-testdata to build and audit this competitive-programming package, require heterogeneous multi-test data, concrete solutions for every partial unit, close-complexity stress tests, and at least three blind adversarial-agent rounds, run every executable under the recorded resource policy, then write the concise Chinese editorial and finish only with current release evidence."
+  default_prompt: "Use $build-cp-testdata to build and audit this competitive-programming package, require proof-obligation attacks, per-candidate loop-path analysis, resource-safe partial and wrong solutions with no host-system failures, two-family stable stress evidence, harness-valid verdict causes, and at least three blind adversarial rounds, then finish only with current release evidence."

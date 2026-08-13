@@ -33,6 +33,11 @@ After a change, invalidate the changed artifact's gate and every dependent resul
 | Validator or group promises | Validator positive/negative suite and legality audit of every sample/formal input |
 | Generator, case plan, seed, or formal input | Reproducibility, validation, answer generation, hashes, duplicate checks, candidate matrix, timing where applicable |
 | Adversarial candidate portfolio or round result | Complete candidate matrix, per-unit scores, excess-score decisions, final clean-round evidence, and release audit |
+| Correctness proof, sufficient-state model, or proof-obligation attack ledger | Quotient-state candidate coverage, brute witness pairs, named killing families, complete candidate matrix, and release audit |
+| New semantically correct but out-of-budget implementation, or a changed loop-path/early-stop analysis | Complexity-frontier classification, loop-path table, two independent legal worst-case families, direct three-run candidate/oracle timing, complete candidate matrix, timing claims, and release audit |
+| Candidate I/O adapter, working directory, launcher, or harness semantics | Candidate smoke tests, every affected verdict and score, excess-score decision, and release audit; infrastructure-caused CE/RE/TLE cannot remain as data-strength evidence |
+| Candidate storage layout, allocation bound, recursion, output volume, child processes, temporary files, or resource-enforcement mechanism | Peak-resource budget, checked size arithmetic, scale-ladder preflight, effective hard-cap evidence where applicable, every affected verdict and score, process-tree cleanup, host-health confirmation, and release audit; system errors cannot remain as strength evidence |
+| User, reviewer, or post-release wrong solution with excess score | Previous `go` report, data-strength acceptance, candidate matrix, affected timing claims, final hashes, package copy, and release audit; reproduce first, minimize the defect, repair named generator families, test a one-condition-fixed mutation, and rerun the accumulated portfolio |
 | Checker or comparison mode | Checker self-tests, answer consistency, std/brute comparison, candidate matrix |
 | Time, memory, stack limits, runtime resource mechanism, or release flags | Generation, validation, oracle answers, differential tests, candidate matrix, independent acceptance, maximum-case benchmarks, and every resource-dependent verdict |
 | Editorial | Editorial review only, unless it exposes a contradiction in an earlier artifact |
@@ -57,6 +62,7 @@ Issue `decision: go` only when all required gates are current and their evidence
 - Scoring-unit definition, candidate verdict/score breakdown, and timing evidence.
 - A concrete tested solution for every non-full scoring unit and close-complexity operation/timing evidence.
 - Requested stack limit, effective operating-system mechanism, and confirmation that every executable class used the same policy.
+- Candidate peak-memory/output/process/file budgets, resource-safe preflight results, and confirmation that no accepted verdict depends on a host allocation, launch, cleanup, disk, handle, or process-tree failure.
 - Editorial review result.
 - Archive policy and its authority; when policy is `none`, confirmation that no release ZIP/archive was created.
 - Unresolved risks, which must be empty for `go`.

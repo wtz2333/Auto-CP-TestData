@@ -8,6 +8,7 @@
 4. Three-round adversarial agents
 5. Verdict and score expectations
 6. Survivor diagnosis
+7. Resource-safe candidate construction
 
 ## Program classes
 
@@ -39,6 +40,8 @@ Select only relevant defects:
 
 Avoid undefined behavior unless it is the target; otherwise failure gives weak evidence about data quality.
 
+Do not make a candidate easier to reject by giving it incidental resource hazards. In particular, do not materialize a full dense matrix or oversized `vector` when the intended defect is a wrong transition, greedy assumption, or excessive running time. Keep the defect isolated so a failing verdict identifies the data property being tested.
+
 ## Close-complexity candidates
 
 List the plausible complexity frontier around the full solution. Include candidates that add only one logarithmic factor, one extra data-structure operation, a larger state dimension, a close polynomial factor, pseudo-polynomial dependence, or excess memory when those approaches are realistic for contestants.
@@ -58,3 +61,19 @@ Use `must_pass` for every required case. Use `must_fail` only for specific const
 ## Survivor diagnosis
 
 Differential-test a survivor on exhaustive or random small inputs, minimize any counterexample, and reconsider whether the algorithm is actually correct. If wrong, add a named generator profile generalizing the counterexample, update expectations, and rerun the full matrix. Never use illegal input or weaken the validator to kill a solution.
+
+## Resource-safe candidate construction
+
+For every representative, record estimated and measured peak memory, stack depth, output bound, and process/thread/file behavior. Apply [runtime-resource-policy.md](runtime-resource-policy.md) before execution.
+
+If memory is not the attacked boundary, require a comfortable safety margin and replace incidental dense storage with bounded flat or rolling storage. `vector` is permitted, but its maximum capacity and all simultaneously live copies must be computed; nested vectors, reserve growth, and allocator overhead must be included.
+
+If memory is the attacked boundary, separate proof from execution. Keep the mathematically faithful memory formula, but run an above-limit instance only under an effective hard cap that cannot exhaust the host. Otherwise provide formula plus bounded measurements and do not claim an observed MLE. Never accept a local system error, `bad_alloc` cascade, process-launch failure, host swap storm, or cleanup failure as a qualifying candidate result.
+
+Before adding a candidate to the matrix, verify that it:
+
+1. passes sample and tiny harness smoke tests;
+2. has no unrelated undefined behavior under sanitizers when supported;
+3. stays within the declared preflight caps on a scale ladder;
+4. terminates its process tree and cleans temporary artifacts after timeout;
+5. fails formal data only through its recorded semantic, time, or safely enforced memory boundary.
