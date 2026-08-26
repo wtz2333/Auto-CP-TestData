@@ -244,8 +244,8 @@ class Pipeline:
             raise PipelineError("memory_limit_mib must be a positive integer")
         if self.stack_limit_mib <= 0:
             raise PipelineError("stack_limit_mib must be a positive integer")
-        if self.stack_limit_mib > self.memory_limit_mib:
-            raise PipelineError("stack_limit_mib must not exceed memory_limit_mib")
+        if self.stack_limit_mib != self.memory_limit_mib:
+            raise PipelineError("stack_limit_mib must equal memory_limit_mib")
         text_files = self.config.get("text_files", [])
         if not isinstance(text_files, list) or not all(isinstance(value, str) for value in text_files):
             raise PipelineError("text_files must be a list of paths")

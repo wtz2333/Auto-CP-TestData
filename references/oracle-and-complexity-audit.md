@@ -16,7 +16,7 @@ Turn asymptotic claims into a constraint worksheet:
 
 If implementation constants or allocator behavior matter, measure them. Do not accept “should pass” as complexity evidence.
 
-Run all resource and recursion tests under [runtime-resource-policy.md](runtime-resource-policy.md). The default runtime stack equals the frozen memory limit, but the audit must still prove that legal recursion cannot exceed that budget and that newly written accepted code does not depend on an unsafe depth. Distinguish a host-default stack failure from a failure under the configured release stack.
+Run all resource and recursion tests under [runtime-resource-policy.md](runtime-resource-policy.md). The runtime stack equals the frozen memory limit. Do not reject recursion from depth alone: derive the worst-case live stack from legal depth and frame use, then run maximum-depth profiles under the configured release stack. Accept the recursive implementation when that evidence fits the budget and passes; distinguish a host-default stack failure from a failure under the configured release stack.
 
 ## Brute oracle
 

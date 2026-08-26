@@ -68,7 +68,7 @@ Start from `assets/pipeline.example.json`. Paths are relative to the configurati
 - `scoring`: one explicit `per_case`, `bundled`, or `mixed` scoring definition.
 - `testdata_config.path`: `data/config.yaml` for standard batch packages.
 - `memory_limit_mib`: positive release memory limit matching the task contract.
-- `stack_limit_mib`: positive runtime stack limit no greater than `memory_limit_mib`; omit it only to use the required default equal to `memory_limit_mib`.
+- `stack_limit_mib`: runtime stack limit exactly equal to `memory_limit_mib`; omit it only to inherit that same required value.
 
 Each case must also provide nonempty semantic `tags` and a written `purpose` explaining what the point proves or attacks. For a file containing multiple test instances, keep its family names, counts, size bands, order policy, aggregate-bound accounting, and intended kills in the manifest even when those problem-specific fields are not interpreted by the generic runner.
 

@@ -120,7 +120,7 @@ python scripts/run_pipeline.py pipeline.json all
 | `evaluate` | 在全部数据上运行候选程序，生成判定和分数矩阵 |
 | `all` | 按依赖顺序完成以上全部阶段 |
 
-所有程序都使用同一份冻结的运行时资源策略。`stack_limit_mib` 默认等于 `memory_limit_mib`；Windows 通过链接器设置 PE 栈保留，POSIX 在子进程执行前设置 `RLIMIT_STACK`。
+所有程序都使用同一份冻结的运行时资源策略。`stack_limit_mib` 必须等于 `memory_limit_mib`；Windows 通过链接器设置 PE 栈保留，POSIX 在子进程执行前设置 `RLIMIT_STACK`。递归是正常实现选择：先核算最坏递归深度与栈帧占用，并在这份统一栈限制下运行最大深度用例，不因深度较大就机械改成迭代写法。
 
 ## 计分模式
 

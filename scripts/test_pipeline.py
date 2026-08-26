@@ -266,16 +266,13 @@ class PipelineConfigTests(unittest.TestCase):
                 ["-Wl,--stack,536870912"],
             )
 
-    def test_explicit_smaller_stack_limit_is_allowed(self) -> None:
-        config = self.base_config()
-        config["stack_limit_mib"] = 256
-        self.assertEqual(self.load(config=config).stack_limit_mib, 256)
-
-    def test_stack_limit_cannot_exceed_memory_limit(self) -> None:
-        config = self.base_config()
-        config["stack_limit_mib"] = 513
-        with self.assertRaisesRegex(PipelineError, "must not exceed"):
-            self.load(config=config)
+    def test_stack_limit_must_equal_memory_limit(self) -> None:
+        for stack_limit_mib in (256, 513):
+            with self.subTest(stack_limit_mib=stack_limit_mib):
+                config = self.base_config()
+                config["stack_limit_mib"] = stack_limit_mib
+                with self.assertRaisesRegex(PipelineError, "must equal"):
+                    self.load(config=config)
 
     def test_stack_limit_must_be_positive(self) -> None:
         config = self.base_config()

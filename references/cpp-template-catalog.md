@@ -36,7 +36,7 @@ Prefer Markdown sources over duplicate PDFs. Read a PDF only when no equivalent 
 2. Check the verified assets below.
 3. If an asset matches, inline only its needed methods and adapt its types and identities.
 4. Otherwise open the routed local `.cpp` or the relevant heading in a routed `.md` file.
-5. Reimplement it using `jiangly-cpp-style.md`; do not preserve legacy globals, macros, 1-based storage, fixed limits, or unsafe recursion merely because the reference uses them.
+5. Reimplement it using `jiangly-cpp-style.md`; do not preserve legacy globals, macros, 1-based storage, fixed limits, or unmeasured recursion merely because the reference uses them. Keep recursive structure when its worst-case live stack is budgeted and verified under the configured limit.
 6. Compile under the frozen standard and create a small deterministic behavior test. Differential-test against a direct model whenever practical.
 7. If the implementation becomes generally reusable and passes review, add it as a verified asset and extend `scripts/test_cpp_templates.cpp`.
 
@@ -158,7 +158,7 @@ Before accepting any reused algorithm, verify:
 1. Index base and every public interval boundary.
 2. Neutral elements, associativity, lazy composition order, and whether operations commute.
 3. Graph direction, parallel-edge behavior, self-loops, capacity and cost signs, and disconnected inputs.
-4. Tree root, edge-versus-vertex semantics, path direction, maximum depth, and iterative or recursive stack safety.
+4. Tree root, edge-versus-vertex semantics, path direction, maximum depth, and the measured or derived stack budget of the chosen recursive or iterative traversal.
 5. Alphabet mapping, sentinel choice, empty strings, and character range.
 6. Modulus primality, primitive root, transform length divisibility, inverse preconditions, and overflow before reduction.
 7. Floating versus exact geometry, epsilon scale, collinearity policy, and duplicate points.

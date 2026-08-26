@@ -21,7 +21,7 @@ Apply requirements in this order:
 3. Correctness, overflow safety, stack safety, time, and memory limits.
 4. This style reference.
 
-Use a C++17 or C++20 feature only when the frozen standard permits it. Replace recursive DFS with an iterative traversal when a legal chain can exceed safe stack depth, even if a recursive lambda would otherwise fit the style.
+Use a C++17 or C++20 feature only when the frozen standard permits it. Recursive DFS and other recursive routines are acceptable when their worst-case live stack is estimated and maximum-depth profiles pass with the configured stack equal to the memory limit. Do not mechanically replace recursion with an iterative traversal solely because the legal chain is long.
 
 ## Default file skeleton
 
@@ -71,7 +71,7 @@ Before accepting newly written code, check:
 2. All internal indices and interval endpoints follow their stated convention.
 3. `Info()` is a true identity and `operator+` is associative on reachable states.
 4. Lazy composition order is tested when a tag exists.
-5. Tree traversal is stack-safe for the maximum legal depth.
+5. Recursive or iterative traversal stays within the memory limit and passes maximum-depth tests under the identically sized configured stack.
 6. Size products, distances, costs, and sentinels use safe types.
 7. The template was trimmed and the final program remains self-contained.
 8. The std and partial solutions still pass their required differential and score-boundary tests.

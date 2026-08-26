@@ -2,9 +2,9 @@
 
 Apply this policy whenever the pipeline runs a generator, validator, checker, oracle, brute force, accepted solution, partial solution, wrong solution, independent solution, or benchmark executable.
 
-## Default stack limit
+## Stack limit
 
-Set `stack_limit_mib` to `memory_limit_mib` by default. Treat the stack as part of the same memory budget: require a positive value no greater than `memory_limit_mib`. Use a smaller explicit value only when the frozen platform contract defines one; never inherit the operating system's small default stack silently.
+Set `stack_limit_mib` equal to `memory_limit_mib`. Treat the stack as part of the same memory budget and reject a pipeline configuration when the two values differ. Never inherit the operating system's small default stack silently.
 
 Provision the limit consistently:
 
@@ -13,11 +13,11 @@ Provision the limit consistently:
 
 Record `stack_limit_mib`, the operating-system mechanism, and any linker option in the environment or manifest evidence. Apply the same value to generation, validation, answer production, differential tests, the candidate matrix, independent acceptance, and timing runs so verdicts are comparable.
 
-## Correctness boundary
+## Recursion and correctness boundary
 
-A large runtime stack prevents the host's small default from causing false `RE` results, but it does not waive stack-safety review. Newly written full and genuine partial solutions must still avoid recursion whose legal worst-case depth is unsafe or whose stack use can exceed the problem memory limit. Prefer an iterative traversal when the input admits a long chain.
+Recursion is a normal implementation choice. Do not reject recursive code or mechanically convert it to an iterative traversal merely because the input admits a long chain. Estimate the legal worst-case depth and live bytes per frame, include that amount in the program's memory budget, and exercise maximum-depth profiles under the configured release stack. A recursive implementation is acceptable when the estimate fits the memory limit with appropriate runtime margin and the run succeeds under that same stack setting.
 
-If a program still overflows the configured release stack, record `RE` and fix the program or its supported-domain claim. Do not rerun one program with an ad hoc larger stack, and do not use a larger stack to hide memory usage beyond the frozen limit.
+If a program still overflows the configured release stack or its proved live stack can exceed the memory limit, record `RE` and fix the program or its supported-domain claim; converting that implementation to an iterative traversal is one possible fix, not a default requirement. Do not rerun one program with an ad hoc larger stack, and do not use a larger stack to hide memory usage beyond the frozen limit.
 
 ## Candidate source resource preflight
 
